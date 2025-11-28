@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Hydra: UEBA Graph Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 0.75rem;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body class="h-screen flex flex-col overflow-hidden font-sans">
+
+    <!-- Header -->
+    <header class="h-16 flex items-center justify-between px-6 border-b border-slate-700 bg-slate-900/80">
+        <div class="flex items-center gap-3">
+            <div
+                class="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center font-bold text-white">
+                H</div>
+            <h1
+                class="text-xl font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">
+                PROJECT HYDRA</h1>
+            <span class="text-xs text-slate-400 ml-2 px-2 py-0.5 border border-slate-700 rounded-full">UEBA
+                MONITOR</span>
+        </div>
+        <div class="flex items-center gap-6">
+            <div class="text-right">
+                <div class="text-xs text-slate-400">SYSTEM TIME</div>
+                <div id="clock" class="text-sm font-mono text-cyan-400">00:00:00</div>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400">STATUS</div>
+                <div id="system-status" class="text-sm font-bold text-emerald-400">ACTIVE</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
+
+        <!-- Tabs Navigation -->
+        <div class="flex gap-4 border-b border-slate-700 pb-2">
+            <button onclick="switchTab('monitor')" id="tab-monitor"
+                class="px-4 py-2 text-sm font-bold text-cyan-400 border-b-2 border-cyan-400 transition-colors">GRAPH
+                MONITOR</button>
+            <button onclick="switchTab('hunter')" id="tab-hunter"
+                class="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors">THREAT
+                HUNTER</button>
+            <button onclick="switchTab('intel')" id="tab-intel"
+                class="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors">INTEL
+                DASHBOARD</button>
+        </div>
+
+        <!-- Tab Content: Graph Monitor -->
+        <div id="view-monitor" class="flex-1 flex gap-4 overflow-hidden">
+            <!-- Left Column: Graph & Controls -->
+            <div class="flex-1 flex flex-col gap-4">
+
+                <!-- Top Stats Bar -->
+                <div class="h-24 grid grid-cols-4 gap-4">
+                    <div class="glass-panel p-4 flex flex-col justify-center relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                            </svg>
+                        </div>
+                        <div class="text-xs text-slate-400 uppercase tracking-wider">Max Risk Score</div>
+                        <div id="max-risk-display" class="text-3xl font-bold text-emerald-400 mt-1">0.0</div>
+                    </div>
+                    <div class="glass-panel p-4 flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider">Active Users</div>
+                        <div id="total-users-display" class="text-2xl font-bold text-white mt-1">0</div>
+                    </div>
+                    <div class="glass-panel p-4 flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider">ML Model Status</div>
+                        <div id="ml-status-display" class="text-lg font-bold text-yellow-400 mt-1">Initializing...</div>
+                    </div>
+                    <div class="glass-panel p-4 flex flex-col justify-center items-center">
+                        <button id="sim-btn"
+                            class="w-full h-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded shadow-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            START SIMULATION
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Graph Container -->
+                <div class="flex-1 glass-panel relative overflow-hidden flex flex-col">
+                    <div class="absolute top-4 left-4 z-10 flex gap-2">
+                        <div
+                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500"></span> Low Risk
+                        </div>
+                        <div
+                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
+                            <span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span> High Risk
+                        </div>
+                        <div
+                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
+                            <span class="w-3 h-3 bg-blue-500"></span> Resource
+                        </div>
+                    </div>
+                    <div id="graph-container" class="w-full h-full"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Context Panel -->
+            <div id="context-panel"
+                class="w-96 glass-panel flex flex-col p-4 gap-4 transition-all duration-300 transform translate-x-0">
+                <div class="border-b border-slate-700 pb-2 mb-2">
+                    <h2 class="text-lg font-bold text-cyan-400">User Context</h2>
+                    <p class="text-xs text-slate-400">Select a node to view details</p>
+                </div>
+
+                <!-- Default State -->
+                <div id="no-selection"
+                    class="flex-1 flex flex-col items-center justify-center text-slate-500 opacity-50">
+                    <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                    </svg>
+                    <p>No User Selected</p>
+                </div>
+
+                <!-- Active State (Hidden by default) -->
+                <div id="user-details" class="hidden flex-col gap-4 h-full overflow-y-auto">
+                    <div class="flex justify-between items-center">
+                        <h3 id="detail-username" class="text-xl font-bold text-white">User_X</h3>
+                        <span id="detail-risk-badge"
+                            class="px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">NORMAL</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-800/50 p-2 rounded">
+                            <div class="text-xs text-slate-400">Anomaly Score</div>
+                            <div id="detail-score" class="text-lg font-mono font-bold">0.0</div>
+                        </div>
+                        <div class="bg-slate-800/50 p-2 rounded">
+                            <div class="text-xs text-slate-400">Diversification</div>
+                            <div id="detail-div-score" class="text-lg font-mono font-bold">0.00</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Analyst Button -->
+                    <button id="ai-analyze-btn"
+                        class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded flex items-center justify-center gap-2 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        GENERATE AI INCIDENT REPORT
+                    </button>
+
+                    <div class="h-40 bg-slate-800/30 rounded p-2">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+
+                    <div class="flex-1 overflow-hidden flex flex-col">
+                        <h4 class="text-sm font-bold text-slate-300 mb-2">Recent Activity</h4>
+                        <div id="activity-timeline" class="flex-1 overflow-y-auto space-y-2 pr-2 text-xs">
+                            <!-- Timeline items injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Threat Hunter -->
+        <div id="view-hunter" class="hidden flex-1 flex-col gap-4 overflow-hidden">
+            <div class="glass-panel p-4 flex flex-col h-full">
+                <div class="mb-4">
+                    <h2 class="text-xl font-bold text-cyan-400 mb-2">Hydra Query Language (HQL) Console</h2>
+                    <p class="text-xs text-slate-400 mb-4">Execute real-time queries against the log buffer. Syntax:
+                        <code class="bg-slate-800 px-1 rounded">SELECT * FROM logs WHERE key = 'value'</code></p>
+                    <div class="flex gap-2">
+                        <input id="hql-input" type="text" placeholder="SELECT * FROM logs WHERE action = 'Login'"
+                            class="flex-1 bg-slate-900 border border-slate-700 rounded px-4 py-2 text-sm font-mono text-white focus:outline-none focus:border-cyan-500">
+                        <button id="hql-run-btn"
+                            class="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded transition-colors">RUN</button>
+                    </div>
+                </div>
+                <div class="flex-1 bg-slate-900 rounded border border-slate-700 overflow-hidden flex flex-col">
+                    <div
+                        class="bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 border-b border-slate-700 flex justify-between">
+                        <span>RESULTS</span>
+                        <span id="hql-status">Ready</span>
+                    </div>
+                    <div id="hql-results"
+                        class="flex-1 overflow-auto p-4 font-mono text-xs text-slate-300 whitespace-pre-wrap">
+                        <!-- Results Table -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Content: Intel Dashboard -->
+        <div id="view-intel" class="hidden flex-1 flex-col gap-4 overflow-hidden">
+            <div class="glass-panel p-4 flex-1 flex flex-col">
+                <h2 class="text-xl font-bold text-cyan-400 mb-4">MITRE ATT&CK Matrix Mapping</h2>
+                <div class="grid grid-cols-3 gap-4 flex-1">
+                    <!-- Column 1 -->
+                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
+                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Initial Access
+                        </h3>
+                        <div class="space-y-2">
+                            <div class="bg-slate-700/50 p-2 rounded text-xs flex justify-between"><span>T1078 Valid
+                                    Accounts</span> <span class="text-emerald-400">Active</span></div>
+                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1190 Exploit
+                                    Public-Facing App</span></div>
+                        </div>
+                    </div>
+                    <!-- Column 2 -->
+                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
+                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Exfiltration
+                        </h3>
+                        <div class="space-y-2">
+                            <div class="bg-slate-700/50 p-2 rounded text-xs flex justify-between"><span>T1048
+                                    Exfiltration Over Alt Protocol</span> <span
+                                    class="text-yellow-400">Monitoring</span></div>
+                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1020 Automated
+                                    Exfiltration</span></div>
+                        </div>
+                    </div>
+                    <!-- Column 3 -->
+                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
+                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Impact</h3>
+                        <div class="space-y-2">
+                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1485 Data
+                                    Destruction</span></div>
+                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1486 Data Encrypted for
+                                    Impact</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- AI Report Modal -->
+    <div id="ai-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div
+            class="bg-slate-900 border border-slate-600 rounded-lg w-2/3 max-w-2xl shadow-2xl flex flex-col max-h-[80vh]">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800 rounded-t-lg">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
+                    <h3 class="text-lg font-bold text-white">AI Analyst Report</h3>
+                </div>
+                <button onclick="closeAIModal()" class="text-slate-400 hover:text-white">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1 font-sans text-sm leading-relaxed text-slate-300 space-y-4"
+                id="ai-report-content">
+                <!-- Content -->
+            </div>
+            <div class="p-4 border-t border-slate-700 bg-slate-800 rounded-b-lg flex justify-end">
+                <button onclick="closeAIModal()"
+                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
