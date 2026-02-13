@@ -1,0 +1,1 @@
+[{"id": "main_overview", "title": "System Overview", "panels": [{"title": "Recent Alerts", "query": "is_malicious=true | head 5", "type": "table", "width": "full"}, {"title": "Event Counts", "query": "stats count by sourcetype", "type": "chart", "width": "half"}]}, {"title": "Finance Overview", "panels": [], "id": "dash_6719"}]

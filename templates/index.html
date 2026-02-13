@@ -4,298 +4,508 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Hydra: UEBA Graph Monitor</title>
+    <title>Project Hydra: Fusion Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             background-color: #0f172a;
+            /* Slate 900 */
             color: #e2e8f0;
+            font-family: 'Segoe UI', 'Inter', sans-serif;
         }
 
-        .glass-panel {
+        .glass {
             background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(148, 163, 184, 0.1);
-            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        /* Custom Scrollbar */
+        /* Sidebar Navigation */
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+            color: #94a3b8;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #f8fafc;
+        }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), transparent);
+            border-left: 3px solid #06b6d4;
+            color: #22d3ee;
+        }
+
+        /* Scrollbar */
         ::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #1e293b;
+            background: #0f172a;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
+            background: #334155;
+            border-radius: 3px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
+            background: #475569;
+        }
+
+        .table-row-hover:hover {
+            background-color: rgba(30, 41, 59, 0.8);
         }
     </style>
 </head>
 
-<body class="h-screen flex flex-col overflow-hidden font-sans">
+<body class="h-screen flex overflow-hidden bg-slate-950">
 
-    <!-- Header -->
-    <header class="h-16 flex items-center justify-between px-6 border-b border-slate-700 bg-slate-900/80">
-        <div class="flex items-center gap-3">
-            <div
-                class="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center font-bold text-white">
-                H</div>
-            <h1
-                class="text-xl font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">
-                PROJECT HYDRA</h1>
-            <span class="text-xs text-slate-400 ml-2 px-2 py-0.5 border border-slate-700 rounded-full">UEBA
-                MONITOR</span>
-        </div>
-        <div class="flex items-center gap-6">
-            <div class="text-right">
-                <div class="text-xs text-slate-400">SYSTEM TIME</div>
-                <div id="clock" class="text-sm font-mono text-cyan-400">00:00:00</div>
-            </div>
-            <div class="text-right">
-                <div class="text-xs text-slate-400">STATUS</div>
-                <div id="system-status" class="text-sm font-bold text-emerald-400">ACTIVE</div>
+    <!-- Sidebar -->
+    <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-20 shadow-xl">
+        <div class="h-16 flex items-center px-6 border-b border-slate-800 bg-slate-900">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-cyan-600 rounded flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                </div>
+                <h1 class="font-bold text-lg tracking-wide text-slate-100">HYDRA <span class="text-cyan-500">SOC</span>
+                </h1>
+                <div class="ml-auto px-2 py-0.5 rounded text-[10px] uppercase font-bold
+                    {% if current_user.role == 'admin' %} bg-red-900/50 text-red-400 border border-red-500/30
+                    {% else %} bg-slate-800 text-slate-400 border border-slate-700 {% endif %}">
+                    {{ current_user.role }}
+                </div>
             </div>
         </div>
-    </header>
+
+        <nav class="flex-1 p-4 space-y-1">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">Operations</div>
+            <div class="nav-item active" onclick="switchTab('overview')" id="nav-overview">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+                Dashboard
+            </div>
+            <div class="nav-item" onclick="switchTab('triage')" id="nav-triage">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Incidents
+            </div>
+
+            <div class="mt-4 px-2">
+                {% if current_user.role == 'admin' %}
+                <button onclick="promptAddEntity()"
+                    class="w-full py-2 mb-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs font-bold text-slate-300 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    ADD ENTITY
+                </button>
+                <button onclick="clearLogs()"
+                    class="w-full py-2 mb-4 bg-red-900/20 hover:bg-red-900/40 border border-red-900/30 rounded text-xs font-bold text-red-400 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    CLEAR LOGS
+                </button>
+                <button id="nav-logs" onclick="switchTab('logs')"
+                    class="nav-item w-full text-left px-4 py-3 rounded text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors flex items-center gap-3">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    Data Search
+                </button>
+                <button id="nav-dashboards" onclick="switchTab('dashboards')"
+                    class="nav-item w-full text-left px-4 py-3 rounded text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors flex items-center gap-3">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z">
+                        </path>
+                    </svg>
+                    Dashboards
+                </button>
+                {% endif %}
+            </div>
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-6 mb-2 px-2">Investigation
+            </div>
+            <div class="nav-item" onclick="switchTab('monitor')" id="nav-monitor">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                </svg>
+                Fusion Graph
+            </div>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800">
+            <div class="bg-slate-800 rounded p-3 text-xs text-slate-400">
+                <div class="flex justify-between items-center mb-2">
+                    <span>Performance</span>
+                    <span id="perf-eps" class="text-green-400">0 EPS</span>
+                </div>
+                <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-green-500 w-1/3 h-full animate-pulse"></div>
+                </div>
+            </div>
+        </div>
+    </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
+    <main class="flex-1 flex flex-col relative overflow-hidden bg-slate-950">
 
-        <!-- Tabs Navigation -->
-        <div class="flex gap-4 border-b border-slate-700 pb-2">
-            <button onclick="switchTab('monitor')" id="tab-monitor"
-                class="px-4 py-2 text-sm font-bold text-cyan-400 border-b-2 border-cyan-400 transition-colors">GRAPH
-                MONITOR</button>
-            <button onclick="switchTab('hunter')" id="tab-hunter"
-                class="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors">THREAT
-                HUNTER</button>
-            <button onclick="switchTab('intel')" id="tab-intel"
-                class="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors">INTEL
-                DASHBOARD</button>
+        <!-- Header -->
+        <header
+            class="h-16 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-900/50 backdrop-blur z-10">
+            <div class="text-sm font-medium text-slate-400 breadcrumbs">
+                Project Hydra <span class="mx-2">/</span> <span id="page-title" class="text-white">Security
+                    Overview</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <!-- Simulation Control Header -->
+                <button id="sim-btn" onclick="toggleSimulation()"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-bold transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    START SIMULATION
+                </button>
+                <div class="text-right">
+                    <div id="clock" class="text-lg font-bold text-slate-200 leading-none">--:--:--</div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest">UTC +00:00</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Notification Banner -->
+        <div id="honeypot-banner"
+            class="hidden w-full bg-red-600/90 text-white p-2 text-center font-bold text-sm shadow-xl z-20">
+            ⚠ CRITICAL ALERT: HONEYPOT DECOY ACCESSED
         </div>
 
-        <!-- Tab Content: Graph Monitor -->
-        <div id="view-monitor" class="flex-1 flex gap-4 overflow-hidden">
-            <!-- Left Column: Graph & Controls -->
-            <div class="flex-1 flex flex-col gap-4">
+        <!-- CONTENT AREA -->
+        <div class="flex-1 overflow-auto p-8 relative">
 
-                <!-- Top Stats Bar -->
-                <div class="h-24 grid grid-cols-4 gap-4">
-                    <div class="glass-panel p-4 flex flex-col justify-center relative overflow-hidden group">
-                        <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                    d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-                            </svg>
+            <!-- VIEW: OVERVIEW DASHBOARD -->
+            <div id="view-overview" class="view-section space-y-6">
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-4 gap-6">
+                    <div class="glass p-5 rounded-xl border-l-4 border-cyan-500">
+                        <div class="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Total Events</div>
+                        <div class="text-3xl font-bold text-white" id="dash-total-events">0</div>
+                    </div>
+                    <div class="glass p-5 rounded-xl border-l-4 border-red-500">
+                        <div class="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Active Incidents
                         </div>
-                        <div class="text-xs text-slate-400 uppercase tracking-wider">Max Risk Score</div>
-                        <div id="max-risk-display" class="text-3xl font-bold text-emerald-400 mt-1">0.0</div>
+                        <div class="text-3xl font-bold text-white">2</div>
                     </div>
-                    <div class="glass-panel p-4 flex flex-col justify-center">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider">Active Users</div>
-                        <div id="total-users-display" class="text-2xl font-bold text-white mt-1">0</div>
+                    <div class="glass p-5 rounded-xl border-l-4 border-emerald-500">
+                        <div class="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">ML Status</div>
+                        <div class="text-3xl font-bold text-white" id="ml-status-display">Training</div>
                     </div>
-                    <div class="glass-panel p-4 flex flex-col justify-center">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider">ML Model Status</div>
-                        <div id="ml-status-display" class="text-lg font-bold text-yellow-400 mt-1">Initializing...</div>
+                    <div class="glass p-5 rounded-xl border-l-4 border-amber-500">
+                        <div class="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Avg Risk Score</div>
+                        <div class="text-3xl font-bold text-white">42</div>
                     </div>
-                    <div class="glass-panel p-4 flex flex-col justify-center items-center">
-                        <button id="sim-btn"
-                            class="w-full h-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded shadow-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                </div>
+
+                <!-- Main Chart Area -->
+                <div class="grid grid-cols-3 gap-6 h-96">
+                    <div class="col-span-2 glass rounded-xl p-6 flex flex-col">
+                        <h3 class="text-sm font-bold text-slate-300 mb-4">Events over Time</h3>
+                        <div class="flex-1 relative w-full h-full">
+                            <!-- Placeholder for ChartJS -->
+                            <canvas id="mainChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-span-1 glass rounded-xl p-6 flex flex-col">
+                        <h3 class="text-sm font-bold text-slate-300 mb-4">Top Threats</h3>
+                        <div class="space-y-3">
+                            <div
+                                class="flex items-center justify-between p-3 bg-slate-800/50 rounded border border-red-500/20">
+                                <span class="text-red-400 font-mono text-xs">User_5</span>
+                                <span class="text-xs font-bold text-slate-300">Score: 98</span>
+                            </div>
+                            <div
+                                class="flex items-center justify-between p-3 bg-slate-800/50 rounded border border-amber-500/20">
+                                <span class="text-amber-400 font-mono text-xs">User_12</span>
+                                <span class="text-xs font-bold text-slate-300">Score: 75</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: INCIDENTS (Formerly Triage) -->
+            <div id="view-triage" class="view-section hidden flex-col h-full">
+                <div class="flex gap-6 h-full">
+                    <!-- Left Stats -->
+                    <div class="w-1/3 flex flex-col gap-6">
+                        <div
+                            class="glass rounded-xl p-8 flex flex-col items-center justify-center h-48 relative overflow-hidden text-center">
+                            <span class="text-xs text-slate-400 uppercase tracking-widest z-10">Noise Reduction
+                                Ratio</span>
+                            <span id="reduction-ratio" class="text-5xl font-bold text-cyan-400 mt-2 z-10">--%</span>
+                            <div class="flex gap-8 mt-4 z-10 text-xs text-slate-400">
+                                <div><b id="total-alerts" class="text-white text-lg block">0</b> Raw Alerts</div>
+                                <div><b id="unique-clusters" class="text-white text-lg block">0</b> Clusters</div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex flex-col gap-2">
+                            <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Attack
+                                Scenarios</div>
+                            <div class="flex gap-2">
+                                <button onclick="runScenario(event, 'ransomware')"
+                                    class="flex-1 py-3 bg-fuchsia-900/40 border border-fuchsia-500/30 text-fuchsia-300 hover:bg-fuchsia-900/60 rounded font-bold text-xs transition-colors">
+                                    🔓 RANSOMWARE
+                                </button>
+                                <button onclick="runScenario(event, 'exfiltration')"
+                                    class="flex-1 py-3 bg-orange-900/40 border border-orange-500/30 text-orange-300 hover:bg-orange-900/60 rounded font-bold text-xs transition-colors">
+                                    📤 EXFILTRATION
+                                </button>
+                            </div>
+                            <button onclick="runScenario(event, 'bruteforce')"
+                                class="w-full py-3 bg-red-900/40 border border-red-500/30 text-red-300 hover:bg-red-900/60 rounded font-bold text-xs transition-colors">
+                                🔑 BRUTE FORCE
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right List -->
+                    <div class="flex-1 glass rounded-xl p-6 flex flex-col">
+                        <h3 class="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                            Active Incidents
+                        </h3>
+                        <div id="outlier-list" class="flex-1 overflow-y-auto space-y-2 pr-2">
+                            <!-- Injected Items -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: GRAPH MONITOR -->
+            <div id="view-monitor" class="view-section hidden h-full w-full absolute inset-0 bg-slate-900">
+                <!-- Graph Canvas -->
+                <div id="graph-container" class="absolute inset-0"></div>
+
+                <!-- Feature 4: Visual SPL Search Bar -->
+                <div class="absolute top-6 left-6 z-20 w-96">
+                    <div
+                        class="flex items-center bg-slate-900/90 backdrop-blur border border-slate-700 rounded-lg shadow-2xl">
+                        <span class="pl-4 text-slate-500 font-mono text-xs">></span>
+                        <input id="graph-search" type="text" placeholder="SPL Search: user:User_1 OR risk>50"
+                            class="bg-transparent border-none text-slate-200 text-sm w-full focus:ring-0 font-mono py-3"
+                            onkeyup="handleGraphSearch(event)">
+                        <button onclick="handleGraphSearchClick()"
+                            class="pr-3 text-cyan-500 hover:text-cyan-400 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                             </svg>
-                            START SIMULATION
                         </button>
                     </div>
+                    <div class="mt-1 pl-2 text-[10px] text-slate-500 font-mono">
+                        Try: <span class="text-cyan-600 cursor-pointer hover:underline"
+                            onclick="setSearch('risk>80')">risk>80</span>,
+                        <span class="text-cyan-600 cursor-pointer hover:underline"
+                            onclick="setSearch('user:User_Alpha')">user:User_Alpha</span>
+                    </div>
                 </div>
 
-                <!-- Graph Container -->
-                <div class="flex-1 glass-panel relative overflow-hidden flex flex-col">
-                    <div class="absolute top-4 left-4 z-10 flex gap-2">
-                        <div
-                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
-                            <span class="w-3 h-3 rounded-full bg-emerald-500"></span> Low Risk
+                <!-- Floating Legend -->
+                <div class="absolute bottom-6 left-6 glass p-4 rounded-lg text-xs space-y-2 pointer-events-none z-10">
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Low
+                        Risk</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-amber-500"></span> Medium
+                        Risk</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500"></span> High Risk
+                    </div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-500"></span> Resource</div>
+                    <div class="flex items-center gap-2"><span
+                            class="w-3 h-3 bg-orange-500 border border-red-500"></span> Honeypot Decoy</div>
+                </div>
+
+                <!-- Intelligence Panel (Right Sidebar) -->
+                <div
+                    class="absolute top-0 right-0 w-96 h-full glass border-l border-slate-700 flex flex-col z-20 overflow-hidden transform transition-transform duration-300 translate-x-0">
+                    <div class="p-5 border-b border-slate-700 bg-slate-900/80">
+                        <h2 class="text-sm font-bold text-white uppercase tracking-wider">Entity Intelligence</h2>
+                    </div>
+
+                    <div id="no-selection"
+                        class="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center">
+                        <p class="text-xs">Select a node to view Fusion Intelligence</p>
+                    </div>
+
+                    <div id="user-details" class="hidden flex-1 flex-col overflow-y-auto">
+                        <!-- Content -->
+                        <div class="p-6 bg-slate-800/30">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 id="detail-username" class="text-xl font-bold text-white">User_X</h3>
+                                    <div id="detail-hr-status" class="text-xs font-mono text-slate-400 mt-1">HR: Active
+                                    </div>
+                                </div>
+                                <div id="detail-risk-badge"
+                                    class="px-2 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300">--</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 mb-4">
+                                <div class="bg-slate-900 p-3 rounded border border-slate-700">
+                                    <div class="text-[10px] text-slate-500 uppercase">Fusion Score</div>
+                                    <div id="detail-score" class="text-2xl font-bold text-white">0</div>
+                                </div>
+                                <div class="bg-slate-900 p-3 rounded border border-slate-700">
+                                    <div class="text-[10px] text-slate-500 uppercase">Sensitivity</div>
+                                    <div id="detail-sensitivity" class="text-sm font-bold text-white mt-2">Low</div>
+                                </div>
+                            </div>
                         </div>
-                        <div
-                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
-                            <span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span> High Risk
+
+                        <div class="p-6 border-b border-slate-700">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Context
+                                Enrichment</h4>
+                            <div class="space-y-3 text-xs">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Threat Intel</span>
+                                    <span id="detail-threat-source"
+                                        class="text-slate-300 font-bold text-red-400">--</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-500">Geo</span>
+                                    <span id="detail-geo" class="text-slate-300 font-mono">US</span>
+                                </div>
+                                <div id="detail-mitre-tags" class="flex flex-wrap gap-1 mt-2"></div>
+                            </div>
                         </div>
-                        <div
-                            class="flex items-center gap-2 px-3 py-1 bg-slate-800/80 rounded border border-slate-700 text-xs">
-                            <span class="w-3 h-3 bg-blue-500"></span> Resource
+
+                        <div class="p-6 flex-1">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Response
+                                Playbooks (SOAR)</h4>
+                            <div id="soar-console"
+                                class="hidden text-[10px] font-mono p-2 bg-black text-green-400 border border-slate-800 rounded mb-4 h-24 overflow-y-auto whitespace-pre-wrap">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <button onclick="runSoar('ping')"
+                                    class="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-xs font-bold text-slate-300">
+                                    🔍 PING HOST
+                                </button>
+                                <button onclick="runSoar('whois')"
+                                    class="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-xs font-bold text-slate-300">
+                                    🌐 WHOIS
+                                </button>
+                            </div>
+
+                            <div class="space-y-2">
+                                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Containment
+                                </h4>
+                                <button onclick="exportReport()"
+                                    class="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded flex items-center justify-center gap-2">
+                                    <span>📄</span> Export Case Report
+                                </button>
+                                <span>📄</span> Export Case Report
+                                </button>
+                                {% if current_user.role == 'admin' %}
+                                <button id="btn-block-user" onclick="blockCurrentUser()"
+                                    class="w-full py-2 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-500/30 text-xs font-bold rounded">
+                                    🛑 BLOCK ENTITY
+                                </button>
+                                {% endif %}
+                                <div id="msg-blocked"
+                                    class="hidden text-center text-xs text-red-500 font-bold p-2 border border-red-900 bg-red-950 rounded">
+                                    ENTITY BLOCKED
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div id="graph-container" class="w-full h-full"></div>
                 </div>
             </div>
 
-            <!-- Right Column: Context Panel -->
-            <div id="context-panel"
-                class="w-96 glass-panel flex flex-col p-4 gap-4 transition-all duration-300 transform translate-x-0">
-                <div class="border-b border-slate-700 pb-2 mb-2">
-                    <h2 class="text-lg font-bold text-cyan-400">User Context</h2>
-                    <p class="text-xs text-slate-400">Select a node to view details</p>
+            <!-- VIEW: LOG SEARCH (Splunk Style) -->
+            <div id="view-logs" class="view-section hidden flex-col h-full overflow-hidden">
+                <!-- Search Bar -->
+                <div class="p-4 bg-slate-800/50 border-b border-slate-700 flex gap-2">
+                    <input type="text"
+                        placeholder="SPL Search (e.g. sourcetype=access_combined | stats count by action)"
+                        class="flex-1 bg-slate-900 border border-slate-700 rounded px-4 py-2 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono text-sm">
+                    <button onclick="saveCurrentSearch()"
+                        class="px-4 py-2 bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors text-sm font-bold">SAVE</button>
+                    <select id="saved-searches-dropdown" onchange="loadSavedSearch(this.value)"
+                        class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-slate-300 text-sm focus:outline-none focus:border-cyan-500">
+                        <option value="">Saved Searches...</option>
+                    </select>
+                    <button
+                        class="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition-colors font-bold shadow-lg shadow-green-900/20">SEARCH</button>
                 </div>
 
-                <!-- Default State -->
-                <div id="no-selection"
-                    class="flex-1 flex flex-col items-center justify-center text-slate-500 opacity-50">
-                    <svg class="w-16 h-16 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                    </svg>
-                    <p>No User Selected</p>
+                <!-- Results Table -->
+                <div class="flex-1 overflow-auto p-4">
+                    <div class="overflow-x-auto">
+                        <table id="log-table" class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-slate-400 text-xs uppercase tracking-wider bg-slate-800/50">
+                                    <th class="p-3 border-b border-slate-700 w-10">#</th>
+                                    <th class="p-3 border-b border-slate-700 w-48">Time</th>
+                                    <th class="p-3 border-b border-slate-700 w-32">SourceType</th>
+                                    <th class="p-3 border-b border-slate-700">Event Raw Text</th>
+                                </tr>
+                            </thead>
+                            <tbody id="log-table-body" class="text-slate-300">
+                                <!-- Logs -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+            </div>
 
-                <!-- Active State (Hidden by default) -->
-                <div id="user-details" class="hidden flex-col gap-4 h-full overflow-y-auto">
-                    <div class="flex justify-between items-center">
-                        <h3 id="detail-username" class="text-xl font-bold text-white">User_X</h3>
-                        <span id="detail-risk-badge"
-                            class="px-2 py-1 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400">NORMAL</span>
+            <!-- Dashboards View -->
+            <div id="view-dashboards" class="view-section hidden flex-col h-full overflow-hidden p-6 gap-6">
+                <!-- Top Bar -->
+                <div class="flex justify-between items-center bg-slate-800/50 p-4 rounded border border-slate-700">
+                    <div class="flex items-center gap-4">
+                        <h2 class="text-xl font-bold text-slate-200">Dashboards</h2>
+                        <select id="dashboard-select" onchange="loadDashboard(this.value)"
+                            class="bg-slate-900 border border-slate-700 rounded px-4 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                            <option>Loading...</option>
+                        </select>
                     </div>
-
-                    <div class="grid grid-cols-2 gap-2">
-                        <div class="bg-slate-800/50 p-2 rounded">
-                            <div class="text-xs text-slate-400">Anomaly Score</div>
-                            <div id="detail-score" class="text-lg font-mono font-bold">0.0</div>
-                        </div>
-                        <div class="bg-slate-800/50 p-2 rounded">
-                            <div class="text-xs text-slate-400">Diversification</div>
-                            <div id="detail-div-score" class="text-lg font-mono font-bold">0.00</div>
-                        </div>
-                    </div>
-
-                    <!-- AI Analyst Button -->
-                    <button id="ai-analyze-btn"
-                        class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded flex items-center justify-center gap-2 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        GENERATE AI INCIDENT REPORT
+                    <button onclick="promptCreateDashboard()"
+                        class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold text-sm transition-colors">
+                        + NEW DASHBOARD
                     </button>
+                </div>
 
-                    <div class="h-40 bg-slate-800/30 rounded p-2">
-                        <canvas id="volumeChart"></canvas>
-                    </div>
-
-                    <div class="flex-1 overflow-hidden flex flex-col">
-                        <h4 class="text-sm font-bold text-slate-300 mb-2">Recent Activity</h4>
-                        <div id="activity-timeline" class="flex-1 overflow-y-auto space-y-2 pr-2 text-xs">
-                            <!-- Timeline items injected here -->
-                        </div>
-                    </div>
+                <!-- Dashboard Grid -->
+                <div id="dashboard-grid" class="grid grid-cols-2 gap-6 flex-1 overflow-auto content-start">
+                    <!-- Dynamic Panels -->
                 </div>
             </div>
         </div>
-
-        <!-- Tab Content: Threat Hunter -->
-        <div id="view-hunter" class="hidden flex-1 flex-col gap-4 overflow-hidden">
-            <div class="glass-panel p-4 flex flex-col h-full">
-                <div class="mb-4">
-                    <h2 class="text-xl font-bold text-cyan-400 mb-2">Hydra Query Language (HQL) Console</h2>
-                    <p class="text-xs text-slate-400 mb-4">Execute real-time queries against the log buffer. Syntax:
-                        <code class="bg-slate-800 px-1 rounded">SELECT * FROM logs WHERE key = 'value'</code></p>
-                    <div class="flex gap-2">
-                        <input id="hql-input" type="text" placeholder="SELECT * FROM logs WHERE action = 'Login'"
-                            class="flex-1 bg-slate-900 border border-slate-700 rounded px-4 py-2 text-sm font-mono text-white focus:outline-none focus:border-cyan-500">
-                        <button id="hql-run-btn"
-                            class="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded transition-colors">RUN</button>
-                    </div>
-                </div>
-                <div class="flex-1 bg-slate-900 rounded border border-slate-700 overflow-hidden flex flex-col">
-                    <div
-                        class="bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 border-b border-slate-700 flex justify-between">
-                        <span>RESULTS</span>
-                        <span id="hql-status">Ready</span>
-                    </div>
-                    <div id="hql-results"
-                        class="flex-1 overflow-auto p-4 font-mono text-xs text-slate-300 whitespace-pre-wrap">
-                        <!-- Results Table -->
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab Content: Intel Dashboard -->
-        <div id="view-intel" class="hidden flex-1 flex-col gap-4 overflow-hidden">
-            <div class="glass-panel p-4 flex-1 flex flex-col">
-                <h2 class="text-xl font-bold text-cyan-400 mb-4">MITRE ATT&CK Matrix Mapping</h2>
-                <div class="grid grid-cols-3 gap-4 flex-1">
-                    <!-- Column 1 -->
-                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
-                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Initial Access
-                        </h3>
-                        <div class="space-y-2">
-                            <div class="bg-slate-700/50 p-2 rounded text-xs flex justify-between"><span>T1078 Valid
-                                    Accounts</span> <span class="text-emerald-400">Active</span></div>
-                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1190 Exploit
-                                    Public-Facing App</span></div>
-                        </div>
-                    </div>
-                    <!-- Column 2 -->
-                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
-                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Exfiltration
-                        </h3>
-                        <div class="space-y-2">
-                            <div class="bg-slate-700/50 p-2 rounded text-xs flex justify-between"><span>T1048
-                                    Exfiltration Over Alt Protocol</span> <span
-                                    class="text-yellow-400">Monitoring</span></div>
-                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1020 Automated
-                                    Exfiltration</span></div>
-                        </div>
-                    </div>
-                    <!-- Column 3 -->
-                    <div class="bg-slate-800/50 rounded p-4 border border-slate-700">
-                        <h3 class="text-sm font-bold text-red-400 mb-2 border-b border-red-500/30 pb-1">Impact</h3>
-                        <div class="space-y-2">
-                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1485 Data
-                                    Destruction</span></div>
-                            <div class="bg-slate-700/50 p-2 rounded text-xs opacity-50"><span>T1486 Data Encrypted for
-                                    Impact</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </main>
-
-    <!-- AI Report Modal -->
-    <div id="ai-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-        <div
-            class="bg-slate-900 border border-slate-600 rounded-lg w-2/3 max-w-2xl shadow-2xl flex flex-col max-h-[80vh]">
-            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800 rounded-t-lg">
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
-                    <h3 class="text-lg font-bold text-white">AI Analyst Report</h3>
-                </div>
-                <button onclick="closeAIModal()" class="text-slate-400 hover:text-white">&times;</button>
-            </div>
-            <div class="p-6 overflow-y-auto flex-1 font-sans text-sm leading-relaxed text-slate-300 space-y-4"
-                id="ai-report-content">
-                <!-- Content -->
-            </div>
-            <div class="p-4 border-t border-slate-700 bg-slate-800 rounded-b-lg flex justify-end">
-                <button onclick="closeAIModal()"
-                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold">CLOSE</button>
-            </div>
-        </div>
-    </div>
 
     <script src="/static/js/app.js"></script>
 </body>
