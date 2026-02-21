@@ -350,6 +350,11 @@ async function fetchTriageSummary() {
 
     try {
         const res = await fetch('/api/triage_summary');
+        if (res.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const data = await res.json();
 
         els.reductionRatio.innerText = data.reduction_ratio;
@@ -374,6 +379,10 @@ async function fetchTriageSummary() {
 async function fetchGraphData() {
     try {
         const res = await fetch('/api/graph_data');
+        if (res.status === 401) {
+            window.location.href = '/login'; // Redirect to login on 401
+            return;
+        }
         const data = await res.json();
         updateGraph(data);
 
@@ -431,7 +440,7 @@ function startInjectionLoop() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ malicious: Math.random() > 0.8 })
         });
-    }, 1500);
+    }, 200); // 5 EPS for visibility
 }
 
 window.injectMalicious = async function () {

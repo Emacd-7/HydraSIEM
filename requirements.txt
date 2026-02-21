@@ -9,3 +9,9 @@ flask-login
 authlib
 requests
 authlib
+openai
+python-dotenv
+openai
+python-dotenv
+openai
+python-dotenv

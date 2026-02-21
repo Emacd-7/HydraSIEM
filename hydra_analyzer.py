@@ -23,6 +23,11 @@ from normalization import LogNormalizer # Feature 1: CIM
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from authlib.integrations.flask_client import OAuth
 import os
+from dotenv import load_dotenv
+import openai
+
+load_dotenv()
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Allow HTTP for OAuth (Development Only)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -90,16 +95,23 @@ class Config:
     BASELINE_SIZE = 500
     HONEYPOT_PATHS = ['/finance/salary_list.xlsx', '/hr/employee_ssn.db', '/admin/passwords.txt']
     DISCORD_WEBHOOK_URL = "" # Add your webhook URL here
-    SECRET_KEY = 'hydra-super-secret-auth-key-change-this-in-prod'
-    GOOGLE_CLIENT_ID = '69119719247-ipvgqnneoptpk0jag4knn9n1auscfme5.apps.googleusercontent.com'
-    GOOGLE_CLIENT_SECRET = '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'
+    SECRET_KEY = os.getenv('HYDRA_SECRET_KEY', 'hydra-super-secret-key-change-in-prod')
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
     GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+
 
 # --- Authentication Setup ---
 app.secret_key = Config.SECRET_KEY
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Unauthorized', 'message': 'Please login'}), 401
+    return redirect(url_for('login'))
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -166,16 +178,23 @@ def google_callback():
         
         # Add to mock DB if new
         if user_id not in users:
-            users[user_id] = {'password': 'oauth_user', 'email': user_info['email'], 'role': 'analyst'}
+            # Grant admin role to the primary user
+            role = 'admin' if user_info['email'] == 'emaduddinkhajoor@gmail.com' else 'analyst'
+            users[user_id] = {'password': 'oauth_user', 'email': user_info['email'], 'role': role}
+            save_all_users(users)
+        elif users[user_id].get('email') == 'emaduddinkhajoor@gmail.com' and users[user_id].get('role') != 'admin':
+            # Ensure existing user is promoted if they match the admin email
+            users[user_id]['role'] = 'admin'
             save_all_users(users)
             
         u_data = users[user_id]
         user = User(user_id, email=u_data.get('email'), role=u_data.get('role', 'analyst'))
         login_user(user)
-        return redirect(url_for('index'))
+        # Redirect back to Vite frontend
+        return redirect('http://localhost:3000/')
     else:
         flash('Google Login Failed')
-        return redirect(url_for('login'))
+        return redirect('http://localhost:3000/login')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -205,18 +224,56 @@ def register():
         
     return render_template('register.html')
 
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.json or {}
+    identifier = data.get('username') or data.get('email')
+    password = data.get('password')
+    
+    target_user_id = None
+    if identifier in users:
+        target_user_id = identifier
+    else:
+        for u_id, u_info in users.items():
+            if u_info.get('email') == identifier:
+                target_user_id = u_id
+                break
+    
+    if target_user_id and users[target_user_id]['password'] == password:
+        u_data = users[target_user_id]
+        user = User(target_user_id, email=u_data.get('email'), role=u_data.get('role', 'analyst'))
+        login_user(user)
+        return jsonify({'status': 'success', 'user': target_user_id})
+    return jsonify({'status': 'error', 'message': 'Invalid Credentials'}), 401
+
+@app.route('/api/logout')
+@login_required
+def api_logout():
+    logout_user()
+    return jsonify({'status': 'success'})
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        data = request.form
+        identifier = data.get('username') or data.get('email')
+        password = data.get('password')
         
-        if username in users and users[username]['password'] == password:
-            u_data = users[username]
-            user = User(username, email=u_data.get('email'), role=u_data.get('role', 'analyst'))
+        target_user_id = None
+        if identifier in users:
+            target_user_id = identifier
+        else:
+            for u_id, u_info in users.items():
+                if u_info.get('email') == identifier:
+                    target_user_id = u_id
+                    break
+        
+        if target_user_id and users[target_user_id]['password'] == password:
+            u_data = users[target_user_id]
+            user = User(target_user_id, email=u_data.get('email'), role=u_data.get('role', 'analyst'))
             login_user(user)
             return redirect(url_for('index'))
         else:
@@ -551,6 +608,46 @@ class GraphProcessor:
         # Simplified Diversification: Degree Centrality normalized
         deg = G.degree(user_id)
         return min(100, deg * 5)
+        return min(100, deg * 5)
+
+class AIEngine:
+    """AI Analyst powered by OpenAI GPT-4"""
+    @staticmethod
+    def analyze_risk(user_id, risk_score, context, recent_logs):
+        if not openai.api_key:
+            return "AI Analyst: API Key missing. Please configure .env."
+            
+        try:
+            # Summarize logs for prompt
+            log_summary = "\n".join([f"- {l['timestamp']} {l['action']} ({l['resource_id']})" for l in recent_logs[-5:]])
+            
+            prompt = f"""
+            You are a Tier 3 SOC Analyst. Analyze this user:
+            User: {user_id}
+            Risk Score: {int(risk_score)}/100
+            HR Status: {context.get('hr_status', 'Active')}
+            Sensitivity: {context.get('sensitivity', 'Low')}
+            
+            Recent Activity:
+            {log_summary}
+            
+            Task:
+            1. Explain WHY the risk is high/low.
+            2. Recommend immediate Next Steps for the analyst.
+            Keep it concise (max 3 sentences).
+            """
+            
+            response = openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a concise, professional cybersecurity analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f"AI Analysis Failed: {str(e)}"
 
 # --- Module E: Risk Fusion & Intelligence Core ---
 
@@ -609,23 +706,40 @@ class Fusion:
 # --- Log Simulator (Updated) ---
 
 SYSTEMS_DB_FILE = 'systems.json'
+USERS_SIM_FILE = 'users_sim.json'  # Simulated users (not auth users)
+
+def load_sim_users():
+    if os.path.exists(USERS_SIM_FILE):
+        try:
+            with open(USERS_SIM_FILE, 'r') as f:
+                return json.load(f)
+        except: return []
+    return []
+
+def save_sim_users(users_list):
+    with open(USERS_SIM_FILE, 'w') as f:
+        json.dump(users_list, f)
+
+def load_sim_resources():
+    if os.path.exists(SYSTEMS_DB_FILE):
+        try:
+            with open(SYSTEMS_DB_FILE, 'r') as f:
+                return json.load(f)
+        except: return []
+    return []
+
+def save_sim_resources(resources_list):
+    with open(SYSTEMS_DB_FILE, 'w') as f:
+        json.dump(resources_list, f)
 
 class LogSimulator:
-    USERS = [] # Start empty
+    USERS = []  # Populated from users_sim.json
     ACTIONS = ['Login', 'FileRead', 'FileWrite', 'Upload', 'Download']
-    
+    RESOURCES = []  # Populated from systems.json
+
     @staticmethod
     def load_resources():
-        defaults = ['Server_A', 'DB_Users', 'Share_Docs', 'Public_Web'] + Config.HONEYPOT_PATHS
-        if os.path.exists(SYSTEMS_DB_FILE):
-             try:
-                 with open(SYSTEMS_DB_FILE, 'r') as f:
-                     custom = json.load(f)
-                     return list(set(defaults + custom))
-             except: return defaults
-        return defaults
-
-    RESOURCES = [] # Will init below
+        return load_sim_resources()
     
     @staticmethod
     def generate_ip():
@@ -644,12 +758,14 @@ class LogSimulator:
 
         if malicious:
             action = 'FileCopy'
-            resource = random.choice(['HR_DB', 'Finance_Share'] + Config.HONEYPOT_PATHS)
+            honeypots = list(Honeypot.DECOYS) or ['HR_DB', 'Finance_Share']
+            resource = random.choice(honeypots + (LogSimulator.RESOURCES or honeypots))
             volume = random.randint(500, 2000)
             hour = random.choice([1, 2, 3, 23])
         else:
             action = random.choice(LogSimulator.ACTIONS)
-            resource = random.choice(LogSimulator.RESOURCES)
+            resource = random.choice(LogSimulator.RESOURCES) if LogSimulator.RESOURCES else 'Unknown_Resource'
+
             volume = random.randint(10, 100)
             hour = random.randint(8, 18)
 
@@ -869,10 +985,13 @@ class SPLProcessor:
 
 # --- Global State ---
 
+simulation_running = False
+simulation_thread = None
+
 class GlobalState:
     def __init__(self):
         self.logs = []
-        self.users = {u: {'events': [], 'risk_score': 0} for u in LogSimulator.USERS}
+        self.users = {}  # Populated dynamically by entities
         self.blocked_entities = set()
         self.lock = threading.Lock()
 
@@ -883,26 +1002,36 @@ graph_processor = GraphProcessor()
 
 # --- Background Tasks ---
 
-def background_tasks():
-    LogSimulator.RESOURCES = LogSimulator.load_resources()
-    
-    # Initial Training Data
-    print("Generating baseline data...")
-    if not LogSimulator.USERS:
-        print("No users defined. Skipping baseline generation.")
-    else:
-        for _ in range(Config.BASELINE_SIZE):
+def simulation_loop():
+    """Continuous log generation loop — runs only when started via /api/start_simulation"""
+    global simulation_running
+    print("[SIM] Simulation started.")
+    while simulation_running:
+        if LogSimulator.USERS and LogSimulator.RESOURCES:
             log = LogSimulator.generate_event()
             if log:
-                state.logs.append(log)
-                state.users[log['user_id']]['events'].append(log)
-    
-    if ueba_engine.train_baseline(state.logs):
-        print(f"UEBA Model Trained on {len(state.logs)} logs")
-    
-    print("Initialization complete.")
+                with state.lock:
+                    state.logs.append(log)
+                    uid = log['user_id']
+                    if uid not in state.users:
+                        state.users[uid] = {'events': [], 'risk_score': 0}
+                    state.users[uid]['events'].append(log)
+                    # Re-train UEBA incrementally
+                    if len(state.logs) >= Config.BASELINE_SIZE and not ueba_engine.is_trained:
+                        ueba_engine.train_baseline(state.logs)
+        time.sleep(1)  # Generate 1 event/sec
+    print("[SIM] Simulation stopped.")
 
-threading.Thread(target=background_tasks, daemon=True).start()
+def init_app():
+    """Load persisted entities on startup (but no log generation)"""
+    LogSimulator.USERS = load_sim_users()
+    LogSimulator.RESOURCES = load_sim_resources()
+    for u in LogSimulator.USERS:
+        if u not in state.users:
+            state.users[u] = {'events': [], 'risk_score': 0}
+    print(f"[INIT] Loaded {len(LogSimulator.USERS)} users, {len(LogSimulator.RESOURCES)} resources. System ready.")
+
+threading.Thread(target=init_app, daemon=True).start()
 
 # --- API Endpoints ---
 
@@ -924,6 +1053,162 @@ def get_status():
             'latencies': PerformanceMonitor.get_latencies()
         })
 
+@app.route('/api/dashboard_stats', methods=['GET'])
+@login_required
+def get_dashboard_stats():
+    with state.lock:
+        logs = list(state.logs)
+
+    # --- Event Volume (per hour buckets, last 24h) ---
+    from collections import defaultdict
+    import datetime
+    now = datetime.datetime.now()
+    hourly = defaultdict(lambda: {'events': 0, 'alerts': 0})
+    for l in logs:
+        try:
+            ts = datetime.datetime.fromisoformat(l['timestamp'])
+            # Only include last 24h
+            if (now - ts).total_seconds() <= 86400:
+                hr = ts.strftime('%H:00')
+                hourly[hr]['events'] += 1
+                if l.get('is_malicious'):
+                    hourly[hr]['alerts'] += 1
+        except: pass
+
+    # Fill all 24 hours even if empty
+    event_volume = []
+    for h in range(24):
+        hr = f"{h:02d}:00"
+        event_volume.append({'hour': hr, 'events': hourly[hr]['events'], 'alerts': hourly[hr]['alerts']})
+
+    # --- Top Sourcetypes ---
+    sourcetype_counts = defaultdict(int)
+    for l in logs:
+        st = l.get('sourcetype', 'unknown')
+        sourcetype_counts[st] += 1
+    total = sum(sourcetype_counts.values()) or 1
+    top_sourcetypes = [
+        {'name': k, 'value': round(v / total * 100)}
+        for k, v in sorted(sourcetype_counts.items(), key=lambda x: -x[1])[:5]
+    ]
+
+    # --- Top Risky Users ---
+    with state.lock:
+        risky = [
+            {'name': u, 'risk': round(d['risk_score'])}
+            for u, d in state.users.items()
+        ]
+    risky.sort(key=lambda x: -x['risk'])
+    top_risky = risky[:8]
+
+    return jsonify({
+        'event_volume': event_volume,
+        'top_sourcetypes': top_sourcetypes,
+        'top_risky_users': top_risky
+    })
+
+
+@app.route('/api/triage_summary', methods=['GET'])
+@login_required
+def triage_summary():
+    with state.lock:
+        # Calculate stats
+        alerts = [l for l in state.logs if l.get('is_malicious')]
+        total_alerts = len(alerts)
+        
+        # Identify outliers (High Risk Users)
+        outliers = []
+        for u, data in state.users.items():
+            if data.get('risk_score', 0) > 80:
+                outliers.append(f"{u}: Risk {int(data['risk_score'])}")
+        
+        # Simple clustering proxy (In real app, use DBSCAN results)
+        unique_clusters = len(outliers) # simplified
+        
+        # Reduction Ratio
+        ratio = 0
+        if total_alerts > 0:
+            ratio = (1 - (len(outliers) / total_alerts)) * 100
+            
+        return jsonify({
+            'reduction_ratio': f"{int(ratio)}%",
+            'total_alerts': total_alerts,
+            'unique_clusters': unique_clusters,
+            'outliers': outliers
+        })
+
+@app.route('/api/incidents', methods=['GET'])
+@login_required
+def get_incidents():
+    with state.lock:
+        incidents = []
+        
+        # 1. High Risk Users -> Generate Incidents
+        for u, data in state.users.items():
+            risk = data.get('risk_score', 0)
+            if risk > 50:
+                # Determine severity
+                severity = 'low'
+                status = 'open'
+                if risk > 90: severity = 'critical'
+                elif risk > 70: severity = 'high'
+                elif risk > 50: severity = 'medium'
+                
+                # Check for recent events to map status
+                recent = data['events'][-5:]
+                last_event_time = recent[-1]['timestamp'] if recent else datetime.datetime.now().isoformat()
+                
+                incidents.append({
+                    'id': f"INC-{u}-{int(risk)}",
+                    'title': f"High Risk User Detected: {u}",
+                    'severity': severity,
+                    'status': status,
+                    'user': u,
+                    'timestamp': last_event_time,
+                    'riskScore': int(risk)
+                })
+                
+        # 2. Add specific Critical Alerts (e.g. Honeypot) as separate incidents
+        # Filter for recent critical logs (last 50)
+        critical_logs = [l for l in state.logs[-50:] if l.get('is_malicious') and l.get('resource_id') in Config.HONEYPOT_PATHS]
+        
+        for log in critical_logs:
+             incidents.append({
+                'id': f"ALRT-{log['user_id']}-{int(time.time())}",
+                'title': f"Honeypot Triggered: {log['resource_id']}",
+                'severity': 'critical',
+                'status': 'investigating',
+                'user': log['user_id'],
+                'timestamp': log['timestamp'],
+                'riskScore': 100
+            })
+            
+        # Sort by latest
+        incidents.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return jsonify(incidents)
+
+@app.route('/api/inject_log', methods=['POST'])
+@login_required
+def inject_log():
+    data = request.json or {}
+    malicious = data.get('malicious', False)
+    
+    # Generate event
+    log = LogSimulator.generate_event(malicious=malicious)
+    
+    if log:
+        with state.lock:
+            # Normalize
+            cim_log = LogNormalizer.normalize(log)
+            log.update(cim_log)
+            
+            state.logs.append(log)
+            if log['user_id'] in state.users:
+                state.users[log['user_id']]['events'].append(log)
+        return jsonify({'status': 'success', 'message': 'Log injected'})
+    else:
+        return jsonify({'status': 'ignored', 'message': 'User blocked or no event'})
 
 @app.route('/api/graph_data', methods=['GET'])
 def get_graph_data():
@@ -1006,7 +1291,11 @@ def get_user_context(user_id):
         # Context & Explainability
         context = ContextDB.get_context(user_id, last_resource)
         feature_imp = ueba_engine.get_feature_importance(recent)
-        recommendation = Fusion.get_response_recommendation(user_data['risk_score'], context)
+        feature_imp = ueba_engine.get_feature_importance(recent)
+        
+        # AI Analyst Integration
+        # recommendation = Fusion.get_response_recommendation(user_data['risk_score'], context)
+        recommendation = AIEngine.analyze_risk(user_id, user_data['risk_score'], context, recent)
         
         # Advanced Intel
         last_ip = recent[-1].get('source_ip', '0.0.0.0') if recent else '0.0.0.0'
@@ -1067,6 +1356,111 @@ def get_logs():
                 return jsonify(results[:limit])
                 
         return jsonify(data[:limit])
+
+# --- Entity Management & Simulation Control ---
+
+@app.route('/api/entities', methods=['GET'])
+@login_required
+def get_entities():
+    return jsonify({
+        'users': LogSimulator.USERS,
+        'resources': LogSimulator.RESOURCES,
+        'honeypots': list(Honeypot.DECOYS),
+        'simulation_running': simulation_running
+    })
+
+@app.route('/api/add_user', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_add_user():
+    data = request.json
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Missing name'}), 400
+    if name in LogSimulator.USERS:
+        return jsonify({'error': 'User already exists'}), 400
+    LogSimulator.USERS.append(name)
+    save_sim_users(LogSimulator.USERS)
+    with state.lock:
+        state.users[name] = {'events': [], 'risk_score': 0}
+    return jsonify({'status': 'success', 'users': LogSimulator.USERS})
+
+@app.route('/api/remove_user', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_remove_user():
+    data = request.json
+    name = data.get('name', '').strip()
+    if name in LogSimulator.USERS:
+        LogSimulator.USERS.remove(name)
+        save_sim_users(LogSimulator.USERS)
+    with state.lock:
+        state.users.pop(name, None)
+    return jsonify({'status': 'success', 'users': LogSimulator.USERS})
+
+@app.route('/api/add_resource', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_add_resource():
+    data = request.json
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Missing name'}), 400
+    if name in LogSimulator.RESOURCES:
+        return jsonify({'error': 'Resource already exists'}), 400
+    LogSimulator.RESOURCES.append(name)
+    save_sim_resources(LogSimulator.RESOURCES)
+    return jsonify({'status': 'success', 'resources': LogSimulator.RESOURCES})
+
+@app.route('/api/remove_resource', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_remove_resource():
+    data = request.json
+    name = data.get('name', '').strip()
+    if name in LogSimulator.RESOURCES:
+        LogSimulator.RESOURCES.remove(name)
+        save_sim_resources(LogSimulator.RESOURCES)
+    return jsonify({'status': 'success', 'resources': LogSimulator.RESOURCES})
+
+@app.route('/api/add_honeypot', methods=['POST'])
+@login_required
+@role_required('admin')
+def api_add_honeypot():
+    data = request.json
+    path = data.get('path', '').strip()
+    if not path:
+        return jsonify({'error': 'Missing path'}), 400
+    Honeypot.add_decoy(path)
+    # Also add as a resource so simulation can generate accesses against it
+    if path not in LogSimulator.RESOURCES:
+        LogSimulator.RESOURCES.append(path)
+        save_sim_resources(LogSimulator.RESOURCES)
+    return jsonify({'status': 'success', 'honeypots': list(Honeypot.DECOYS)})
+
+@app.route('/api/start_simulation', methods=['POST'])
+@login_required
+@role_required('admin')
+def start_simulation():
+    global simulation_running, simulation_thread
+    if simulation_running:
+        return jsonify({'status': 'already_running'})
+    if not LogSimulator.USERS:
+        return jsonify({'error': 'Add at least one user before starting simulation'}), 400
+    if not LogSimulator.RESOURCES:
+        return jsonify({'error': 'Add at least one resource before starting simulation'}), 400
+    simulation_running = True
+    simulation_thread = threading.Thread(target=simulation_loop, daemon=True)
+    simulation_thread.start()
+    return jsonify({'status': 'started'})
+
+@app.route('/api/stop_simulation', methods=['POST'])
+@login_required
+@role_required('admin')
+def stop_simulation():
+    global simulation_running
+    simulation_running = False
+    return jsonify({'status': 'stopped'})
 
 @app.route('/api/saved_searches', methods=['GET', 'POST'])
 @login_required
@@ -1154,36 +1548,6 @@ def delete_saved_search(search_id):
     return jsonify({'status': 'success'})
 
 
-@app.route('/api/triage_summary', methods=['GET'])
-def get_triage_summary():
-    with state.lock:
-        alerts = Clustering.generate_mock_alerts(state.logs)
-        total, n_clusters, outliers = Clustering.analyze_alerts(alerts)
-        
-        return jsonify({
-            'total_alerts': total,
-            'unique_clusters': n_clusters,
-            'reduction_ratio': f"{((total - n_clusters)/total * 100):.1f}%" if total > 0 else "0%",
-            'outliers': outliers
-        })
-
-@app.route('/api/inject_log', methods=['POST'])
-def inject_log():
-    data = request.json
-    malicious = data.get('malicious', False)
-    
-    with state.lock:
-        log = LogSimulator.generate_event(malicious=malicious)
-        if log:
-            # CIM Normalization on Ingest
-            cim_log = LogNormalizer.normalize(log)
-            # Merge CIM fields back into log for backend processing
-            log.update(cim_log)
-            
-            state.logs.append(log)
-            state.users[log['user_id']]['events'].append(log)
-        
-    return jsonify({'status': 'success', 'log': log})
 
 @app.route('/api/simulate_scenario', methods=['POST'])
 @login_required
