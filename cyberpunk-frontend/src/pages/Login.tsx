@@ -4,12 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/services/api";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/components/ui/use-toast";
-import { Mail, Lock, User, ShieldCheck } from "lucide-react";
+import { Mail, Lock, User, ShieldCheck, X, KeyRound, UserPlus } from "lucide-react";
 
 const Login = () => {
     const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [showForgot, setShowForgot] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState("");
+    const [forgotSent, setForgotSent] = useState(false);
+    const [forgotLoading, setForgotLoading] = useState(false);
     const navigate = useNavigate();
     const { toast } = useToast();
 
@@ -36,8 +40,24 @@ const Login = () => {
     };
 
     const handleGoogleLogin = () => {
-        // Redirect to backend Google Auth route
         window.location.href = "http://localhost:5000/login/google";
+    };
+
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setForgotLoading(true);
+        try {
+            await fetch("/api/forgot-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: forgotEmail }),
+            });
+        } catch (_) {
+            // Silently show success to prevent email enumeration
+        } finally {
+            setForgotLoading(false);
+            setForgotSent(true);
+        }
     };
 
     return (
@@ -82,6 +102,17 @@ const Login = () => {
                                 className="w-full bg-background/50 border border-input px-10 py-3 rounded-md text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono text-sm"
                             />
                         </div>
+
+                        {/* Forgot Password link */}
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setShowForgot(true); setForgotSent(false); setForgotEmail(""); }}
+                                className="text-[11px] text-muted-foreground hover:text-primary font-mono transition-colors uppercase tracking-wider"
+                            >
+                                Forgot password?
+                            </button>
+                        </div>
                     </div>
 
                     <button
@@ -93,7 +124,7 @@ const Login = () => {
                     </button>
                 </form>
 
-                <div className="relative my-8">
+                <div className="relative my-6">
                     <div className="absolute inset-0 flex items-center">
                         <span className="w-full border-t border-border" />
                     </div>
@@ -114,7 +145,81 @@ const Login = () => {
                     </svg>
                     LINK GOOGLE ID
                 </button>
+
+                {/* Register link */}
+                <div className="mt-6 text-center">
+                    <p className="text-xs text-muted-foreground font-mono">
+                        No account?{" "}
+                        <a
+                            href="http://localhost:5000/register"
+                            className="text-primary hover:text-primary/80 font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1"
+                        >
+                            <UserPlus className="w-3 h-3" />
+                            Register Agent Identity
+                        </a>
+                    </p>
+                </div>
             </div>
+
+            {/* Forgot Password Modal */}
+            {showForgot && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-sm glass-panel p-8 relative animate-fade-in">
+                        <button
+                            onClick={() => setShowForgot(false)}
+                            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+
+                        <div className="flex justify-center mb-6">
+                            <div className="p-3 rounded-full bg-primary/10 border border-primary/20">
+                                <KeyRound className="w-8 h-8 text-primary" />
+                            </div>
+                        </div>
+
+                        <h2 className="text-xl font-bold text-center text-foreground mb-1 tracking-tight">Reset Access Key</h2>
+                        <p className="text-xs text-center text-muted-foreground font-mono mb-6 uppercase tracking-widest">
+                            Enter your registered email
+                        </p>
+
+                        {forgotSent ? (
+                            <div className="text-center space-y-4">
+                                <div className="p-4 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary font-mono">
+                                    ✓ If that email is registered, a reset link has been dispatched.
+                                </div>
+                                <button
+                                    onClick={() => setShowForgot(false)}
+                                    className="w-full py-3 rounded-md border border-input bg-background/50 hover:bg-accent text-foreground font-mono text-sm transition-all"
+                                >
+                                    Return to Terminal
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleForgotPassword} className="space-y-4">
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="email"
+                                        placeholder="agent@hydra.siem"
+                                        value={forgotEmail}
+                                        onChange={(e) => setForgotEmail(e.target.value)}
+                                        required
+                                        className="w-full bg-background/50 border border-input px-10 py-3 rounded-md text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono text-sm"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={forgotLoading}
+                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-md font-bold transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 font-mono tracking-widest"
+                                >
+                                    {forgotLoading ? "DISPATCHING..." : "SEND RESET LINK"}
+                                </button>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <Toaster />
         </div>

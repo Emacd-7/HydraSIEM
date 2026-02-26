@@ -1,0 +1,1 @@
+[{"id": "3", "name": "Investigation: Brute Force Attempt", "query": "action=LoginFailed | stats count by source_ip | sort -count", "owner": "admin", "timestamp": "2026-02-18T12:10:00.000000"}]

@@ -1,7 +1,7 @@
 # Project Hydra: Enterprise SIEM with Fusion Engine
 # Backend: Python Flask + NetworkX + Scikit-Learn + TF-IDF/DBSCAN
 
-from flask import Flask, jsonify, request, render_template, redirect, url_for, session
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session, flash
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -25,6 +25,8 @@ from authlib.integrations.flask_client import OAuth
 import os
 from dotenv import load_dotenv
 import openai
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -99,10 +101,26 @@ class Config:
     GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
     GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
     GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+    # Mail config
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME', '')
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_USERNAME', 'noreply@hydra.siem')
+    PASSWORD_RESET_SALT = 'hydra-password-reset-salt'
 
 
 # --- Authentication Setup ---
 app.secret_key = Config.SECRET_KEY
+app.config['MAIL_SERVER'] = Config.MAIL_SERVER
+app.config['MAIL_PORT'] = Config.MAIL_PORT
+app.config['MAIL_USE_TLS'] = Config.MAIL_USE_TLS
+app.config['MAIL_USERNAME'] = Config.MAIL_USERNAME
+app.config['MAIL_PASSWORD'] = Config.MAIL_PASSWORD
+app.config['MAIL_DEFAULT_SENDER'] = Config.MAIL_DEFAULT_SENDER
+mail = Mail(app)
+ts = URLSafeTimedSerializer(Config.SECRET_KEY)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -286,6 +304,132 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+# ---- Password Reset (Flask form flow) ----
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Flask form version: renders login.html which has the modal; handles API POST."""
+    if request.method == 'GET':
+        return redirect(url_for('login'))
+
+    # Accept both form POST and JSON POST
+    if request.is_json:
+        data = request.get_json()
+        email = (data or {}).get('email', '').strip().lower()
+    else:
+        email = request.form.get('email', '').strip().lower()
+
+    # Always return 200 to prevent email enumeration
+    target_uid = None
+    for uid, udata in users.items():
+        if udata.get('email', '').lower() == email:
+            target_uid = uid
+            break
+
+    if target_uid and Config.MAIL_USERNAME:
+        token = ts.dumps(email, salt=Config.PASSWORD_RESET_SALT)
+        reset_url = f"http://localhost:3000/reset-password?token={token}"
+        try:
+            msg = Message(
+                subject='🔐 Reset Your Hydra SIEM Password',
+                recipients=[email],
+                html=f"""
+<div style="font-family:monospace;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:12px;max-width:480px;margin:auto">
+  <h1 style="color:#38bdf8;letter-spacing:2px">HYDRA<span style="color:#fff">SIEM</span></h1>
+  <p style="color:#94a3b8;font-size:12px;letter-spacing:4px;text-transform:uppercase">ACCESS KEY RESET</p>
+  <hr style="border-color:#334155;margin:20px 0">
+  <p>A password reset was requested for your agent account.</p>
+  <p>Click the button below to set a new access key. This link expires in <strong style="color:#38bdf8">30 minutes</strong>.</p>
+  <div style="text-align:center;margin:32px 0">
+    <a href="{reset_url}" style="background:linear-gradient(45deg,#0ea5e9,#38bdf8);color:#0f172a;padding:14px 28px;border-radius:6px;font-weight:bold;letter-spacing:2px;text-decoration:none;display:inline-block">RESET ACCESS KEY</a>
+  </div>
+  <p style="color:#475569;font-size:11px">If you didn't request this, ignore this email. Your password will not change.</p>
+  <hr style="border-color:#334155;margin:20px 0">
+  <p style="color:#475569;font-size:10px">UNAUTHORIZED ACCESS IS PROHIBITED — SYSTEM VERSION 2.0.4</p>
+</div>
+"""
+            )
+            mail.send(msg)
+            print(f"[MAIL] Reset link sent to {email}")
+        except Exception as e:
+            print(f"[MAIL ERROR] {e}")
+
+    if request.is_json:
+        return jsonify({'status': 'ok', 'message': 'If that email is registered, a reset link has been dispatched.'})
+    flash('If that email is registered, a reset link has been sent.')
+    return redirect(url_for('login'))
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Flask form version of password reset."""
+    try:
+        email = ts.loads(token, salt=Config.PASSWORD_RESET_SALT, max_age=1800)  # 30 min
+    except SignatureExpired:
+        flash('This reset link has expired. Please request a new one.')
+        return redirect(url_for('login'))
+    except BadSignature:
+        flash('Invalid reset link.')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+        if password != confirm:
+            flash('Passwords do not match.')
+            return render_template('reset_password.html', token=token)
+        if len(password) < 4:
+            flash('Password must be at least 4 characters.')
+            return render_template('reset_password.html', token=token)
+
+        # Find the user by email and update
+        for uid, udata in users.items():
+            if udata.get('email', '').lower() == email.lower():
+                users[uid]['password'] = password
+                save_all_users(users)
+                flash('Password updated successfully. Please login.')
+                return redirect(url_for('login'))
+
+        flash('Account not found.')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
+
+
+# ---- Password Reset JSON API (for React frontend) ----
+
+@app.route('/api/forgot-password', methods=['POST'])
+def api_forgot_password():
+    return forgot_password()   # Reuse the same logic
+
+
+@app.route('/api/reset-password', methods=['POST'])
+def api_reset_password():
+    data = request.get_json() or {}
+    token = data.get('token', '')
+    password = data.get('password', '')
+    confirm = data.get('confirm_password', '')
+
+    if password != confirm:
+        return jsonify({'status': 'error', 'message': 'Passwords do not match.'}), 400
+    if len(password) < 4:
+        return jsonify({'status': 'error', 'message': 'Password must be at least 4 characters.'}), 400
+
+    try:
+        email = ts.loads(token, salt=Config.PASSWORD_RESET_SALT, max_age=1800)
+    except SignatureExpired:
+        return jsonify({'status': 'error', 'message': 'Reset link has expired.'}), 400
+    except BadSignature:
+        return jsonify({'status': 'error', 'message': 'Invalid reset token.'}), 400
+
+    for uid, udata in users.items():
+        if udata.get('email', '').lower() == email.lower():
+            users[uid]['password'] = password
+            save_all_users(users)
+            return jsonify({'status': 'success', 'message': 'Password updated.'})
+
+    return jsonify({'status': 'error', 'message': 'Account not found.'}), 404
 
 # --- Module H: Performance Monitor ---
 

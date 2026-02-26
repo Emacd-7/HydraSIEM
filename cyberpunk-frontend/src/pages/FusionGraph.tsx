@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { X, User, Server, Target, RefreshCw, Info } from "lucide-react";
 import { api } from "@/services/api";
 
@@ -59,6 +59,10 @@ export default function FusionGraph() {
   const [loadingCtx, setLoadingCtx] = useState(false);
   const [honeypots, setHoneypots] = useState<string[]>([]);
 
+  // Persistent position map: node id -> {x, y}
+  // This prevents nodes from jumping on every 5-second re-poll
+  const positionMap = useRef<Record<string, { x: number; y: number }>>({});
+
   const fetchGraph = useCallback(async () => {
     try {
       const [graphData, entities] = await Promise.all([
@@ -88,16 +92,27 @@ export default function FusionGraph() {
     return "system";
   };
 
-  // Layout: users inner ring, resources/honeypots outer ring
-  const positions = nodes.map((n: any, i: number) => {
-    const angle = (i / nodes.length) * Math.PI * 2;
-    const radius = n.type === "user" ? 140 : 250;
-    return {
-      ...n,
-      x: 400 + Math.cos(angle) * radius,
-      y: 300 + Math.sin(angle) * radius,
-    };
-  });
+  // Assign positions stably: existing nodes keep their coords, new nodes get placed on the ring
+  const positions = useMemo(() => {
+    const cx = 400, cy = 300;
+    // Gather new nodes that don't yet have a position
+    const newUsers = nodes.filter((n: any) => n.type === "user" && !positionMap.current[n.id]);
+    const newResources = nodes.filter((n: any) => n.type !== "user" && !positionMap.current[n.id]);
+
+    // Assign positions on the ring only for NEW nodes
+    newUsers.forEach((n: any, i: number) => {
+      const existingCount = Object.keys(positionMap.current).filter(id => nodes.find((nd: any) => nd.id === id && nd.type === "user")).length;
+      const angle = ((existingCount + i) / Math.max(newUsers.length + existingCount, 1)) * Math.PI * 2;
+      positionMap.current[n.id] = { x: cx + Math.cos(angle) * 140, y: cy + Math.sin(angle) * 140 };
+    });
+    newResources.forEach((n: any, i: number) => {
+      const existingCount = Object.keys(positionMap.current).filter(id => nodes.find((nd: any) => nd.id === id && nd.type !== "user")).length;
+      const angle = ((existingCount + i) / Math.max(newResources.length + existingCount, 1)) * Math.PI * 2;
+      positionMap.current[n.id] = { x: cx + Math.cos(angle) * 250, y: cy + Math.sin(angle) * 250 };
+    });
+
+    return nodes.map((n: any) => ({ ...n, ...positionMap.current[n.id] }));
+  }, [nodes]);
 
   const getPos = (id: string) => positions.find((p) => p.id === id);
 

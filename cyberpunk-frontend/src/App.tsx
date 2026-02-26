@@ -10,6 +10,7 @@ import DataExplorer from "./pages/DataExplorer";
 import Incidents from "./pages/Incidents";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/fusion-graph" element={<FusionGraph />} />
