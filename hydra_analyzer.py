@@ -49,6 +49,22 @@ def save_all_users(users_dict):
     with open(USER_DB_FILE, 'w') as f:
         json.dump(users_dict, f)
 
+COMPANIES_DB_FILE = 'companies.json'
+
+def load_all_companies():
+    if os.path.exists(COMPANIES_DB_FILE):
+        try:
+            with open(COMPANIES_DB_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_all_companies(companies_dict):
+    with open(COMPANIES_DB_FILE, 'w') as f:
+        json.dump(companies_dict, f, indent=2)
+
+
 SAVED_SEARCHES_FILE = 'saved_searches.json'
 
 def load_saved_searches():
@@ -261,8 +277,118 @@ def api_login():
         u_data = users[target_user_id]
         user = User(target_user_id, email=u_data.get('email'), role=u_data.get('role', 'analyst'))
         login_user(user)
-        return jsonify({'status': 'success', 'user': target_user_id})
+        return jsonify({'status': 'success', 'user': target_user_id, 'role': u_data.get('role', 'analyst')})
     return jsonify({'status': 'error', 'message': 'Invalid Credentials'}), 401
+
+# ---- Company Registration API ----
+
+@app.route('/api/register/company', methods=['POST'])
+def api_register_company():
+    """Register a new company with a unique company_id."""
+    data = request.get_json() or {}
+    company_id = data.get('company_id', '').strip().upper()
+    company_name = data.get('company_name', '').strip()
+    description = data.get('description', '').strip()
+    password = data.get('password', '').strip()
+
+    if not company_id or not company_name or not password:
+        return jsonify({'status': 'error', 'message': 'company_id, company_name, and password are required.'}), 400
+
+    companies = load_all_companies()
+    if company_id in companies:
+        return jsonify({'status': 'error', 'message': f'Company ID "{company_id}" is already taken.'}), 409
+
+    # Save to companies.json
+    companies[company_id] = {
+        'name': company_name,
+        'description': description,
+        'registered_at': datetime.datetime.now().isoformat(),
+        'users': []
+    }
+    save_all_companies(companies)
+
+    # Also create a login account for the company (role: company)
+    if company_id not in users:
+        users[company_id] = {
+            'password': password,
+            'role': 'company',
+            'company_id': company_id,
+            'email': data.get('email', '')
+        }
+        save_all_users(users)
+
+    return jsonify({'status': 'success', 'message': f'Company "{company_name}" registered successfully.'})
+
+
+# ---- User (Employee) Registration API ----
+
+@app.route('/api/register/user', methods=['POST'])
+def api_register_user():
+    """Register a new user under an existing company."""
+    data = request.get_json() or {}
+    full_name = data.get('full_name', '').strip()
+    company_id = data.get('company_id', '').strip().upper()
+    password = data.get('password', '').strip()
+    email = data.get('email', '').strip()
+
+    if not full_name or not company_id or not password:
+        return jsonify({'status': 'error', 'message': 'full_name, company_id, and password are required.'}), 400
+
+    companies = load_all_companies()
+    if company_id not in companies:
+        return jsonify({'status': 'error', 'message': f'Company ID "{company_id}" does not exist.'}), 404
+
+    # Auto-generate a unique user_id like USR_COMPID_001
+    existing_company_users = companies[company_id].get('users', [])
+    user_number = len(existing_company_users) + 1
+    user_id = f"USR_{company_id}_{user_number:03d}"
+
+    # Save to users.json
+    users[user_id] = {
+        'password': password,
+        'role': 'company_user',
+        'company_id': company_id,
+        'full_name': full_name,
+        'email': email,
+        'is_blocked': False,
+        'registered_at': datetime.datetime.now().isoformat()
+    }
+    save_all_users(users)
+
+    # Add user_id to company's user list
+    companies[company_id]['users'].append(user_id)
+    save_all_companies(companies)
+
+    return jsonify({
+        'status': 'success',
+        'message': f'User registered successfully.',
+        'user_id': user_id,
+        'company': companies[company_id]['name']
+    })
+
+
+# ---- Get companies list (admin only) ----
+
+@app.route('/api/companies', methods=['GET'])
+@login_required
+def api_get_companies():
+    """Returns all registered companies with their user counts."""
+    if current_user.role not in ('admin',):
+        return jsonify({'error': 'Access Denied'}), 403
+    companies = load_all_companies()
+    result = []
+    for cid, cdata in companies.items():
+        result.append({
+            'company_id': cid,
+            'name': cdata.get('name'),
+            'description': cdata.get('description'),
+            'user_count': len(cdata.get('users', [])),
+            'registered_at': cdata.get('registered_at'),
+            'users': cdata.get('users', [])
+        })
+    return jsonify(result)
+
+
 
 @app.route('/api/logout')
 @login_required
