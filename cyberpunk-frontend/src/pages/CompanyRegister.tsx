@@ -4,6 +4,27 @@ import { Building2, ShieldCheck, Lock, Hash, FileText, ArrowLeft } from "lucide-
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 
+// IMPORTANT: Defined at module scope to prevent re-mounting on every keystroke
+const Field = ({
+    icon: Icon, name, placeholder, type = "text", value, onChange
+}: {
+    icon: any; name: string; placeholder: string; type?: string;
+    value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) => (
+    <div className="relative">
+        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input
+            name={name}
+            type={type}
+            placeholder={placeholder}
+            value={value}
+            onChange={onChange}
+            required
+            className="w-full bg-background/50 border border-input px-10 py-3 rounded-md text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono text-sm"
+        />
+    </div>
+);
+
 export default function CompanyRegister() {
     const navigate = useNavigate();
     const { toast } = useToast();
@@ -21,6 +42,8 @@ export default function CompanyRegister() {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
     };
+
+    const ch = handleChange as (e: React.ChangeEvent<HTMLInputElement>) => void;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,21 +78,6 @@ export default function CompanyRegister() {
         }
     };
 
-    const Field = ({ icon: Icon, name, placeholder, type = "text" }: any) => (
-        <div className="relative">
-            <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-                name={name}
-                type={type}
-                placeholder={placeholder}
-                value={(form as any)[name]}
-                onChange={handleChange}
-                required
-                className="w-full bg-background/50 border border-input px-10 py-3 rounded-md text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono text-sm"
-            />
-        </div>
-    );
-
     return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4 relative overflow-hidden">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--primary)_0%,_transparent_70%)] opacity-5 pointer-events-none" />
@@ -95,12 +103,12 @@ export default function CompanyRegister() {
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <Field icon={Hash} name="company_id" placeholder="Company ID (e.g. ACMECORP) — must be unique" />
-                    <Field icon={Building2} name="company_name" placeholder="Full Company Name" />
-                    <Field icon={FileText} name="description" placeholder="Brief description (optional)" />
-                    <Field icon={ShieldCheck} name="email" placeholder="Admin Email" type="email" />
-                    <Field icon={Lock} name="password" placeholder="Password" type="password" />
-                    <Field icon={Lock} name="confirm" placeholder="Confirm Password" type="password" />
+                    <Field icon={Hash} name="company_id" placeholder="Company ID (e.g. ACMECORP) — must be unique" value={form.company_id} onChange={ch} />
+                    <Field icon={Building2} name="company_name" placeholder="Full Company Name" value={form.company_name} onChange={ch} />
+                    <Field icon={FileText} name="description" placeholder="Brief description (optional)" value={form.description} onChange={ch} />
+                    <Field icon={ShieldCheck} name="email" placeholder="Admin Email" type="email" value={form.email} onChange={ch} />
+                    <Field icon={Lock} name="password" placeholder="Password" type="password" value={form.password} onChange={ch} />
+                    <Field icon={Lock} name="confirm" placeholder="Confirm Password" type="password" value={form.confirm} onChange={ch} />
 
                     <button
                         type="submit"
