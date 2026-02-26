@@ -11,6 +11,8 @@ import Incidents from "./pages/Incidents";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import CompanyRegister from "./pages/CompanyRegister";
+import UserRegister from "./pages/UserRegister";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +26,8 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/register/company" element={<CompanyRegister />} />
+          <Route path="/register/user" element={<UserRegister />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/fusion-graph" element={<FusionGraph />} />

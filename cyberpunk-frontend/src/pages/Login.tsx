@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/services/api";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/components/ui/use-toast";
-import { Mail, Lock, User, ShieldCheck, X, KeyRound, UserPlus } from "lucide-react";
+import { Mail, Lock, User, ShieldCheck, X, KeyRound, UserPlus, Building2 } from "lucide-react";
 
 const Login = () => {
     const [identifier, setIdentifier] = useState("");
@@ -21,12 +21,17 @@ const Login = () => {
         e.preventDefault();
         setIsLoading(true);
         try {
-            await api.login(identifier, password);
+            const res = await api.login(identifier, password);
             toast({
                 title: "Authentication Successful",
                 description: "Initializing neural link...",
             });
-            navigate("/");
+            // Route based on role returned from server
+            if (res.role === 'company') {
+                navigate("/company-dashboard");
+            } else {
+                navigate("/");
+            }
         } catch (error: any) {
             console.error(error);
             toast({
@@ -146,18 +151,25 @@ const Login = () => {
                     LINK GOOGLE ID
                 </button>
 
-                {/* Register link */}
-                <div className="mt-6 text-center">
-                    <p className="text-xs text-muted-foreground font-mono">
-                        No account?{" "}
-                        <a
-                            href="http://localhost:5000/register"
-                            className="text-primary hover:text-primary/80 font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1"
-                        >
-                            <UserPlus className="w-3 h-3" />
-                            Register Agent Identity
-                        </a>
-                    </p>
+                {/* Register options */}
+                <div className="mt-6 space-y-2">
+                    <p className="text-[10px] text-center text-muted-foreground font-mono uppercase tracking-widest mb-3">New to Hydra?</p>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/register/company")}
+                        className="w-full border border-primary/30 bg-primary/5 hover:bg-primary/10 py-2.5 rounded-md font-mono text-sm text-primary transition-all flex items-center justify-center gap-2 group"
+                    >
+                        <Building2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        Register as Company
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/register/user")}
+                        className="w-full border border-border bg-background/30 hover:bg-accent py-2.5 rounded-md font-mono text-sm text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-2 group"
+                    >
+                        <UserPlus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        Register as User
+                    </button>
                 </div>
             </div>
 
