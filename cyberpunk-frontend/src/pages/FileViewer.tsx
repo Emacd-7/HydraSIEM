@@ -42,17 +42,21 @@ export default function FileViewer() {
     useEffect(() => {
         if (!isClassified) return; // No protections on 'open' files
 
-        // ── PrintScreen / keyboard capture detection ───────────────────────────
+        // ── PrintScreen detection — fires on BOTH keydown AND keyup ──────────
+        // Chrome/Brave only fires keyup for PrintScreen; keydown covers Ctrl+P/Ctrl+S
         const handleKeyDown = (e: KeyboardEvent) => {
-            // PrintScreen key
-            if (e.key === 'PrintScreen' || e.keyCode === 44) {
-                e.preventDefault();
-                triggerBlackout('PrintScreenAttempt');
-            }
-            // Ctrl+P (Print), Ctrl+S (Save), Ctrl+Shift+S (Screenshot on some apps)
             if (e.ctrlKey && (e.key === 'p' || e.key === 's')) {
                 e.preventDefault();
                 triggerBlackout('PrintOrSaveAttempt');
+            }
+        };
+
+        // Most browsers fire keyup (not keydown) for the PrintScreen key
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                triggerBlackout('PrintScreenAttempt');
+                // Try to clear clipboard that was just written
+                try { navigator.clipboard.writeText(''); } catch { }
             }
         };
 
@@ -63,17 +67,20 @@ export default function FileViewer() {
             }
         };
 
-        // ── Context menu (right-click) ─────────────────────────────────────────
+        // ── Context menu — blocks right-click on parent page (not inside iframe) ──
         const blockContextMenu = (e: MouseEvent) => {
             e.preventDefault();
+            logEvent('RightClickAttempt');
         };
 
         document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', handleKeyUp);
         document.addEventListener('visibilitychange', handleVisibility);
         document.addEventListener('contextmenu', blockContextMenu);
 
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('keyup', handleKeyUp);
             document.removeEventListener('visibilitychange', handleVisibility);
             document.removeEventListener('contextmenu', blockContextMenu);
         };
@@ -189,6 +196,29 @@ export default function FileViewer() {
                             </span>
                         ))}
                     </div>
+                )}
+
+                {/* ── Right-click interceptor — sits above the iframe for classified files ── */}
+                {/* The browser's native PDF viewer can't be reached with document-level listeners. */}
+                {/* This transparent div sits on top and catches contextmenu before it reaches the iframe. */}
+                {isClassified && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 50,
+                            background: 'transparent',
+                            cursor: 'default',
+                        }}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            logEvent('RightClickAttempt');
+                        }}
+                        onMouseDown={(e) => {
+                            // Block right mouse button (button === 2) drag at mousedown
+                            if (e.button === 2) e.preventDefault();
+                        }}
+                    />
                 )}
 
                 {/* PDF Viewer */}
