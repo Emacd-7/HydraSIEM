@@ -660,6 +660,34 @@ def api_log_security_event():
     return jsonify({'status': 'logged'})
 
 
+@app.route('/api/admin/set_classification', methods=['POST'])
+@login_required
+def api_set_classification():
+    """Admin sets a file's classification: 'open' or 'classified'."""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin only.'}), 403
+
+    data = request.get_json() or {}
+    company_id = data.get('company_id', '').upper()
+    file_id = data.get('file_id', '')
+    classification = data.get('classification', 'classified')  # 'open' or 'classified'
+
+    if classification not in ('open', 'classified'):
+        return jsonify({'error': 'classification must be "open" or "classified".'}), 400
+
+    companies = load_all_companies()
+    if company_id not in companies:
+        return jsonify({'error': 'Company not found.'}), 404
+
+    for f in companies[company_id].get('files', []):
+        if f['file_id'] == file_id:
+            f['classification'] = classification
+            save_all_companies(companies)
+            return jsonify({'status': 'success', 'file_id': file_id, 'classification': classification})
+
+    return jsonify({'error': 'File not found.'}), 404
+
+
 @app.route('/api/logout')
 @login_required
 def api_logout():

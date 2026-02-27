@@ -14,6 +14,8 @@ import ResetPassword from "./pages/ResetPassword";
 import CompanyRegister from "./pages/CompanyRegister";
 import UserRegister from "./pages/UserRegister";
 import CompanyDashboard from "./pages/CompanyDashboard";
+import UserDashboard from "./pages/UserDashboard";
+import FileViewer from "./pages/FileViewer";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,8 @@ const App = () => (
           <Route path="/register/company" element={<CompanyRegister />} />
           <Route path="/register/user" element={<UserRegister />} />
           <Route path="/company-dashboard" element={<CompanyDashboard />} />
+          <Route path="/user-dashboard" element={<UserDashboard />} />
+          <Route path="/view-file/:fileId" element={<FileViewer />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/fusion-graph" element={<FusionGraph />} />

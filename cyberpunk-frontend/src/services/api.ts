@@ -221,4 +221,13 @@ export const api = {
         if (!res.ok) throw new Error('Failed to fetch companies');
         return res.json();
     },
+
+    setClassification: async (companyId: string, fileId: string, classification: 'open' | 'classified') => {
+        const res = await fetch('/api/admin/set_classification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ company_id: companyId, file_id: fileId, classification }),
+        });
+        return res.json();
+    },
 };
