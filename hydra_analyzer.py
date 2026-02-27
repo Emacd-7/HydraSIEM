@@ -379,21 +379,12 @@ def api_register_user():
 @app.route('/api/companies', methods=['GET'])
 @login_required
 def api_get_companies():
-    """Returns all registered companies with their user counts."""
+    """Returns all registered companies with their full data including files."""
     if current_user.role not in ('admin',):
         return jsonify({'error': 'Access Denied'}), 403
     companies = load_all_companies()
-    result = []
-    for cid, cdata in companies.items():
-        result.append({
-            'company_id': cid,
-            'name': cdata.get('name'),
-            'description': cdata.get('description'),
-            'user_count': len(cdata.get('users', [])),
-            'registered_at': cdata.get('registered_at'),
-            'users': cdata.get('users', [])
-        })
-    return jsonify(result)
+    # Return as a dict keyed by company_id (matches frontend CompanyPanel expectation)
+    return jsonify(companies)
 
 
 # ============================================================
