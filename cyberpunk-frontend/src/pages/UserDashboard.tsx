@@ -20,7 +20,7 @@ const FileRow = ({
     file: FileMeta;
     onOpen: (f: FileMeta) => void;
 }) => {
-    const isClassified = file.classification === 'classified';
+    const isClassified = (file.classification ?? 'classified') === 'classified';
     return (
         <div className="px-5 py-4 flex items-center gap-4 hover:bg-secondary/20 transition-colors">
             <div className="p-2 rounded bg-secondary/40 border border-border">
