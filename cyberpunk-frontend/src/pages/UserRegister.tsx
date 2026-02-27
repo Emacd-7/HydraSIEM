@@ -106,10 +106,20 @@ export default function UserRegister() {
                             <p className="text-xs text-muted-foreground font-mono mb-4">
                                 You've been added to <span className="text-primary font-bold">{result.company}</span>
                             </p>
-                            <div className="border border-primary/20 rounded-md p-3 bg-background/40">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Your Assigned User ID</p>
-                                <p className="text-lg font-black font-mono text-primary">{result.user_id}</p>
-                                <p className="text-[10px] text-muted-foreground mt-1">Save this — your admin can track you by this ID</p>
+
+                            {/* User ID — LOGIN credential */}
+                            <div className="border-2 border-primary/40 rounded-md p-4 bg-background/60 space-y-1">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your Login ID</p>
+                                <p className="text-xl font-black font-mono text-primary tracking-wide">{result.user_id}</p>
+                                <p className="text-[11px] text-yellow-400 font-mono font-bold mt-2">
+                                    ⚠️ Use this as your USERNAME to log in — NOT your full name
+                                </p>
+                            </div>
+
+                            <div className="mt-3 text-[10px] text-muted-foreground font-mono bg-secondary/30 rounded px-3 py-2">
+                                Login at <span className="text-primary">localhost:3000/login</span> using:<br />
+                                Username: <span className="text-foreground font-bold">{result.user_id}</span><br />
+                                Password: <span className="text-foreground font-bold">the password you just set</span>
                             </div>
                         </div>
                         <button

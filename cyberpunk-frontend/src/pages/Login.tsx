@@ -29,6 +29,8 @@ const Login = () => {
             // Route based on role returned from server
             if (res.role === 'company') {
                 navigate("/company-dashboard");
+            } else if (res.role === 'company_user') {
+                navigate("/user-dashboard");
             } else {
                 navigate("/");
             }
