@@ -28,11 +28,11 @@ const Login = () => {
             });
             // Route based on role returned from server
             if (res.role === 'company') {
-                navigate("/company-dashboard");
+                window.open('/company-dashboard', '_blank');   // new tab, login page stays
             } else if (res.role === 'company_user') {
-                navigate("/user-dashboard");
+                window.open('/user-dashboard', '_blank');      // new tab, login page stays
             } else {
-                navigate("/");
+                navigate("/");                                  // admin: same tab
             }
         } catch (error: any) {
             console.error(error);
