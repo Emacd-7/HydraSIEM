@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import CompanyRegister from "./pages/CompanyRegister";
 import UserRegister from "./pages/UserRegister";
+import CompanyDashboard from "./pages/CompanyDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/register/company" element={<CompanyRegister />} />
           <Route path="/register/user" element={<UserRegister />} />
+          <Route path="/company-dashboard" element={<CompanyDashboard />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/fusion-graph" element={<FusionGraph />} />

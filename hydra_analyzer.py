@@ -27,6 +27,8 @@ from dotenv import load_dotenv
 import openai
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
+from werkzeug.utils import secure_filename
+import re
 
 load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -104,7 +106,12 @@ def save_dashboards(dashboards):
 
 
 
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
+ALLOWED_EXTENSIONS = {'pdf', 'csv', 'xlsx', 'xls'}
+
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max
 
 # --- Configuration ---
 class Config:
@@ -388,6 +395,269 @@ def api_get_companies():
         })
     return jsonify(result)
 
+
+# ============================================================
+# FILE MANAGEMENT — Upload, List, View, Assign
+# ============================================================
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/api/company/upload', methods=['POST'])
+@login_required
+def api_company_upload():
+    """Company uploads a file. Only users with role='company' can upload."""
+    if current_user.role not in ('company', 'admin'):
+        return jsonify({'error': 'Only company accounts can upload files.'}), 403
+
+    company_id = users.get(current_user.id, {}).get('company_id', current_user.id)
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part in request.'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected.'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'File type not allowed. Use PDF, CSV, or XLSX.'}), 400
+
+    # Create company's upload directory if it doesn't exist
+    company_dir = os.path.join(app.config['UPLOAD_FOLDER'], company_id)
+    os.makedirs(company_dir, exist_ok=True)
+
+    filename = secure_filename(file.filename)
+    # Avoid overwriting: prefix with timestamp
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    stored_name = f"{timestamp}_{filename}"
+    filepath = os.path.join(company_dir, stored_name)
+    file.save(filepath)
+
+    # Track file metadata in companies.json
+    companies = load_all_companies()
+    if company_id in companies:
+        if 'files' not in companies[company_id]:
+            companies[company_id]['files'] = []
+        file_meta = {
+            'file_id': stored_name,
+            'original_name': filename,
+            'uploaded_at': datetime.datetime.now().isoformat(),
+            'uploaded_by': current_user.id,
+            'size_bytes': os.path.getsize(filepath),
+            'allowed_users': []  # Admin assigns users later
+        }
+        companies[company_id]['files'].append(file_meta)
+        save_all_companies(companies)
+
+    # Log the upload event
+    with state.lock:
+        state.logs.append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'user_id': current_user.id,
+            'action': 'FileUpload',
+            'resource_id': filename,
+            'data_volume': os.path.getsize(filepath),
+            'sourcetype': 'file_activity',
+            'company_id': company_id,
+            'message': f'{current_user.id} uploaded file: {filename}'
+        })
+
+    return jsonify({
+        'status': 'success',
+        'file_id': stored_name,
+        'original_name': filename,
+        'message': f'File "{filename}" uploaded successfully.'
+    })
+
+
+@app.route('/api/company/files', methods=['GET'])
+@login_required
+def api_company_files():
+    """
+    Returns list of files.
+    - Admin: can pass ?company_id=XXX to get a specific company's files
+    - Company: sees its own files
+    - Company user: sees only files assigned to them
+    """
+    companies = load_all_companies()
+    user_data = users.get(current_user.id, {})
+    role = current_user.role
+
+    if role == 'admin':
+        company_id = request.args.get('company_id')
+        if company_id and company_id in companies:
+            return jsonify(companies[company_id].get('files', []))
+        # Return all files across all companies
+        all_files = []
+        for cid, cdata in companies.items():
+            for f in cdata.get('files', []):
+                all_files.append({**f, 'company_id': cid, 'company_name': cdata.get('name')})
+        return jsonify(all_files)
+
+    elif role == 'company':
+        company_id = user_data.get('company_id', current_user.id)
+        return jsonify(companies.get(company_id, {}).get('files', []))
+
+    elif role == 'company_user':
+        company_id = user_data.get('company_id')
+        files_list = companies.get(company_id, {}).get('files', [])
+        # Only return files where this user is in allowed_users
+        accessible = [f for f in files_list if current_user.id in f.get('allowed_users', [])]
+        return jsonify(accessible)
+
+    return jsonify([])
+
+
+@app.route('/api/files/<path:file_id>/view', methods=['GET'])
+@login_required
+def api_view_file(file_id):
+    """
+    Serve a file inline for DLP viewing.
+    Access is checked: admin/company can view, company_user must be in allowed_users.
+    Every view is logged.
+    """
+    companies = load_all_companies()
+    user_data = users.get(current_user.id, {})
+    company_id = user_data.get('company_id', current_user.id)
+
+    # Find the file metadata
+    file_meta = None
+    owner_company_id = None
+    for cid, cdata in companies.items():
+        for f in cdata.get('files', []):
+            if f['file_id'] == file_id:
+                file_meta = f
+                owner_company_id = cid
+                break
+
+    if not file_meta:
+        return jsonify({'error': 'File not found.'}), 404
+
+    # Check if user is blocked
+    if user_data.get('is_blocked', False):
+        return jsonify({'error': 'Your access has been blocked by the administrator.'}), 403
+
+    # Permission check
+    role = current_user.role
+    if role == 'company_user':
+        if current_user.id not in file_meta.get('allowed_users', []):
+            return jsonify({'error': 'You do not have access to this file.'}), 403
+        if company_id != owner_company_id:
+            return jsonify({'error': 'Access denied.'}), 403
+    elif role == 'company' and owner_company_id != company_id:
+        return jsonify({'error': 'Access denied.'}), 403
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], owner_company_id, file_id)
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found on disk.'}), 404
+
+    # Log the file view event
+    with state.lock:
+        state.logs.append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'user_id': current_user.id,
+            'action': 'FileView',
+            'resource_id': file_meta['original_name'],
+            'data_volume': file_meta.get('size_bytes', 0),
+            'sourcetype': 'file_activity',
+            'company_id': owner_company_id,
+            'source_ip': request.remote_addr,
+            'message': f'{current_user.id} viewed file: {file_meta["original_name"]}'
+        })
+
+    ext = file_id.rsplit('.', 1)[-1].lower()
+    mime_map = {'pdf': 'application/pdf', 'csv': 'text/csv', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xls': 'application/vnd.ms-excel'}
+    mimetype = mime_map.get(ext, 'application/octet-stream')
+
+    return send_file(filepath, mimetype=mimetype, as_attachment=False)
+
+
+@app.route('/api/admin/assign_file', methods=['POST'])
+@login_required
+def api_assign_file():
+    """Admin assigns or revokes a user's access to a specific file."""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin only.'}), 403
+
+    data = request.get_json() or {}
+    company_id = data.get('company_id', '').upper()
+    file_id = data.get('file_id', '')
+    user_id = data.get('user_id', '')
+    action = data.get('action', 'grant')  # 'grant' or 'revoke'
+
+    companies = load_all_companies()
+    if company_id not in companies:
+        return jsonify({'error': 'Company not found.'}), 404
+
+    for f in companies[company_id].get('files', []):
+        if f['file_id'] == file_id:
+            allowed = f.setdefault('allowed_users', [])
+            if action == 'grant' and user_id not in allowed:
+                allowed.append(user_id)
+            elif action == 'revoke' and user_id in allowed:
+                allowed.remove(user_id)
+            save_all_companies(companies)
+            return jsonify({'status': 'success', 'allowed_users': allowed})
+
+    return jsonify({'error': 'File not found.'}), 404
+
+
+@app.route('/api/admin/block_user', methods=['POST'])
+@login_required
+def api_block_user():
+    """Admin blocks or unblocks a company user's file access."""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin only.'}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get('user_id', '')
+    action = data.get('action', 'block')  # 'block' or 'unblock'
+
+    if user_id not in users:
+        return jsonify({'error': 'User not found.'}), 404
+
+    users[user_id]['is_blocked'] = (action == 'block')
+    save_all_users(users)
+
+    # Log the block/unblock event
+    with state.lock:
+        state.logs.append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'user_id': current_user.id,
+            'action': 'AdminBlock' if action == 'block' else 'AdminUnblock',
+            'resource_id': user_id,
+            'sourcetype': 'admin_action',
+            'message': f'Admin {current_user.id} {"blocked" if action == "block" else "unblocked"} user {user_id}'
+        })
+
+    return jsonify({'status': 'success', 'user_id': user_id, 'is_blocked': users[user_id]['is_blocked']})
+
+
+@app.route('/api/admin/log_security_event', methods=['POST'])
+@login_required
+def api_log_security_event():
+    """Client-side security events (screenshot attempt, tab switch) logged here."""
+    data = request.get_json() or {}
+    event_type = data.get('event_type', 'unknown')
+    file_id = data.get('file_id', '')
+    user_id = current_user.id
+    company_id = users.get(user_id, {}).get('company_id', '')
+
+    with state.lock:
+        state.logs.append({
+            'timestamp': datetime.datetime.now().isoformat(),
+            'user_id': user_id,
+            'action': event_type,
+            'resource_id': file_id,
+            'sourcetype': 'dlp_violation',
+            'source_ip': request.remote_addr,
+            'company_id': company_id,
+            'is_malicious': True,
+            'message': f'DLP ALERT: {user_id} triggered {event_type} on file {file_id}'
+        })
+
+    return jsonify({'status': 'logged'})
 
 
 @app.route('/api/logout')

@@ -172,5 +172,53 @@ export const api = {
     stopSimulation: async () => {
         const res = await fetch('/api/stop_simulation', { method: 'POST' });
         return res.json();
-    }
+    },
+
+    // --- Company File Management ---
+    uploadFile: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/company/upload', { method: 'POST', body: formData });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Upload failed'); }
+        return res.json();
+    },
+
+    getCompanyFiles: async (companyId?: string) => {
+        const url = companyId ? `/api/company/files?company_id=${companyId}` : '/api/company/files';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed to fetch files');
+        return res.json();
+    },
+
+    blockUser: async (userId: string, action: 'block' | 'unblock') => {
+        const res = await fetch('/api/admin/block_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, action }),
+        });
+        return res.json();
+    },
+
+    assignFile: async (companyId: string, fileId: string, userId: string, action: 'grant' | 'revoke') => {
+        const res = await fetch('/api/admin/assign_file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ company_id: companyId, file_id: fileId, user_id: userId, action }),
+        });
+        return res.json();
+    },
+
+    logSecurityEvent: async (eventType: string, fileId: string) => {
+        await fetch('/api/admin/log_security_event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_type: eventType, file_id: fileId }),
+        });
+    },
+
+    getCompanies: async () => {
+        const res = await fetch('/api/companies');
+        if (!res.ok) throw new Error('Failed to fetch companies');
+        return res.json();
+    },
 };
