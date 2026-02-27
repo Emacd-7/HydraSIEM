@@ -199,8 +199,6 @@ export default function FileViewer() {
                         className="w-full h-full border-none"
                         style={{ height: 'calc(100vh - 57px)' }}
                         title={state.original_name}
-                        // These attrs disable the browser's built-in download/print UI
-                        sandbox={isClassified ? "allow-scripts allow-same-origin" : undefined}
                     />
                 )}
 
@@ -211,7 +209,6 @@ export default function FileViewer() {
                         className="w-full border-none"
                         style={{ height: 'calc(100vh - 57px)' }}
                         title={state.original_name}
-                        sandbox={isClassified ? "allow-scripts allow-same-origin" : undefined}
                     />
                 )}
 
