@@ -1,7 +1,7 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/services/api";
-import { ArrowLeft, ShieldAlert, Eye, Download, Lock } from "lucide-react";
+import { ArrowLeft, ShieldAlert, Eye, Download, Lock, ShieldOff } from "lucide-react";
 
 type ViewerState = {
     original_name: string;
@@ -29,13 +29,18 @@ export default function FileViewer() {
         api.logSecurityEvent(eventType, decodedFileId).catch(() => { });
     }, [decodedFileId]);
 
-    // ── DLP: Show black overlay for 3 seconds, log the attempt ────────────────
+    // ── DLP: Permanent revocation state ───────────────────────────────────────
+    const [isRevoked, setIsRevoked] = useState(false);
+
+    // ── DLP: Show black overlay for 3 seconds, then permanently lock ──────────
     const triggerBlackout = useCallback((reason: string) => {
         logEvent(reason);
         if (!overlayRef.current) return;
         overlayRef.current.style.display = 'flex';
         setTimeout(() => {
+            // After 3s dramatic overlay: permanently revoke — PDF never shows again
             if (overlayRef.current) overlayRef.current.style.display = 'none';
+            setIsRevoked(true);
         }, 3000);
     }, [logEvent]);
 
@@ -198,31 +203,31 @@ export default function FileViewer() {
                     </div>
                 )}
 
-                {/* ── Right-click interceptor — sits above the iframe for classified files ── */}
-                {/* The browser's native PDF viewer can't be reached with document-level listeners. */}
-                {/* This transparent div sits on top and catches contextmenu before it reaches the iframe. */}
-                {isClassified && (
-                    <div
-                        style={{
-                            position: 'absolute',
-                            inset: 0,
-                            zIndex: 50,
-                            background: 'transparent',
-                            cursor: 'default',
-                        }}
-                        onContextMenu={(e) => {
-                            e.preventDefault();
-                            logEvent('RightClickAttempt');
-                        }}
-                        onMouseDown={(e) => {
-                            // Block right mouse button (button === 2) drag at mousedown
-                            if (e.button === 2) e.preventDefault();
-                        }}
-                    />
+                {/* ── Permanent revocation screen — shows after any DLP violation ── */}
+                {isRevoked && (
+                    <div className="absolute inset-0 z-[998] bg-background flex flex-col items-center justify-center gap-5">
+                        <div className="p-5 rounded-full bg-red-500/10 border border-red-500/30">
+                            <ShieldOff className="w-14 h-14 text-red-400" />
+                        </div>
+                        <div className="text-center space-y-2">
+                            <p className="text-xl font-black font-mono text-foreground tracking-widest uppercase">Access Revoked</p>
+                            <p className="text-sm text-red-400 font-mono">A security violation was detected on this file.</p>
+                            <p className="text-xs text-muted-foreground font-mono max-w-sm">
+                                Your access to this file has been suspended for this session and the violation has been logged.
+                                Contact your company admin to have your access restored.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="flex items-center gap-2 px-4 py-2 rounded border border-border text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5" /> Return to Dashboard
+                        </button>
+                    </div>
                 )}
 
-                {/* PDF Viewer */}
-                {isPDF && (
+                {/* PDF Viewer — only shown if NOT revoked */}
+                {isPDF && !isRevoked && (
                     <iframe
                         ref={iframeRef}
                         src={`${fileUrl}#toolbar=0&navpanes=0&scrollbar=1`}
@@ -233,7 +238,7 @@ export default function FileViewer() {
                 )}
 
                 {/* CSV / text fallback */}
-                {isCSV && (
+                {isCSV && !isRevoked && (
                     <iframe
                         src={fileUrl}
                         className="w-full border-none"
